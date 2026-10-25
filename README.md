@@ -120,6 +120,12 @@ L'aplicació s'obrirà a `http://localhost:3000/`.
 npm run build
 ```
 
+### 4. Inicialitzar Base de Dades SQLite
+```bash
+npm run db:init
+```
+Crea i pobla la base de dades relacional `soundbox.db` a partir de `docs/bd/schema_sqlite.sql`.
+
 ---
 
 ## 👥 Credencials d'Usuaris de Prova (Demo)
