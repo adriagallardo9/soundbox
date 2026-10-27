@@ -28,3 +28,6 @@ dist-ssr/
 *.sln
 *.sw?
 desktop.ini
+
+# Scripts locals amb credencials (no pujar a GitHub)
+prova_spotify.py
