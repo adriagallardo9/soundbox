@@ -43,6 +43,16 @@ export function initDatabase() {
   }
   if (!localStorage.getItem(KEYS.ALBUMS)) {
     setItem(KEYS.ALBUMS, INITIAL_ALBUMS);
+  } else {
+    const albums = getItem(KEYS.ALBUMS, INITIAL_ALBUMS);
+    const albumsWithoutPlaceholderCovers = albums.map((album) => (
+      album.cover_url && !isSpotifyArtwork(album.cover_url)
+        ? { ...album, cover_url: null }
+        : album
+    ));
+    if (albumsWithoutPlaceholderCovers.some((album, index) => album !== albums[index])) {
+      setItem(KEYS.ALBUMS, albumsWithoutPlaceholderCovers);
+    }
   }
   if (!localStorage.getItem(KEYS.REVIEWS)) {
     setItem(KEYS.REVIEWS, INITIAL_REVIEWS);
@@ -136,6 +146,25 @@ export function saveAlbum(albumData) {
   }
   setItem(KEYS.ALBUMS, albums);
   return albumData;
+}
+
+export function updateAlbumCover(albumId, coverUrl) {
+  const albums = getAlbums();
+  const album = albums.find((item) => item.id === albumId);
+  if (!album || album.cover_url === coverUrl) return false;
+
+  album.cover_url = coverUrl;
+  setItem(KEYS.ALBUMS, albums);
+  return true;
+}
+
+function isSpotifyArtwork(url) {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname.endsWith('.scdn.co') || hostname.endsWith('.spotifycdn.com');
+  } catch {
+    return false;
+  }
 }
 
 // ----------------- REVIEWS -----------------

@@ -2,7 +2,7 @@ import React from 'react';
 import { Bookmark, Star, Music } from 'lucide-react';
 import { useData } from '../context/DataContext';
 
-const DEFAULT_COVER = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80';
+const DEFAULT_COVER = '/album-placeholder.svg';
 
 export default function AlbumCard({ album, onSelect }) {
   const { checkInListenlist, toggleListenlistAlbum, getAlbumStats } = useData();

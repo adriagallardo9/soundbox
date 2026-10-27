@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useNotification } from './NotificationContext';
 import {
@@ -19,6 +19,7 @@ import {
   removeAlbumFromPlaylist,
   deletePlaylist
 } from '../services/storageService';
+import { refreshLocalAlbumCovers } from '../services/spotifyApi';
 
 const DataContext = createContext();
 
@@ -30,6 +31,21 @@ export function DataProvider({ children }) {
   const refresh = useCallback(() => {
     setDataVersion(v => v + 1);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    refreshLocalAlbumCovers()
+      .then((updated) => {
+        if (isMounted && updated > 0) refresh();
+      })
+      .catch((error) => {
+        console.error('[Spotify] No s\'han pogut actualitzar les portades del catàleg:', error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [refresh]);
 
   const getAlbumStats = useCallback((albumId) => {
     // dataVersion dependency triggers recalculation

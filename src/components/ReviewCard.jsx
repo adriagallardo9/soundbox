@@ -42,7 +42,7 @@ export default function ReviewCard({
           className="flex items-center gap-3 pb-3 border-b border-slate-800/80 cursor-pointer group"
         >
           <img
-            src={review.album.cover_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80'}
+            src={review.album.cover_url || '/album-placeholder.svg'}
             alt={review.album.title}
             className="w-12 h-12 rounded-lg object-cover group-hover:scale-105 transition-transform"
           />

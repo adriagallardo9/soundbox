@@ -126,6 +126,23 @@ npm run db:init
 ```
 Crea i pobla la base de dades relacional `soundbox.db` a partir de `docs/bd/schema_sqlite.sql`.
 
+### 5. Desplegar a Cloudflare Workers
+
+El Worker serveix l'aplicació compilada i fa de proxy server-side per a Spotify.
+Fes una primera publicació i configura-hi les credencials de Spotify (no les posis al codi ni al repositori):
+
+```bash
+npx wrangler login
+npm run deploy:cloudflare
+npx wrangler secret put SPOTIFY_CLIENT_ID
+npx wrangler secret put SPOTIFY_CLIENT_SECRET
+```
+
+Per desplegar automàticament cada canvi publicat a `main`, afegeix `CLOUDFLARE_API_TOKEN`
+i `CLOUDFLARE_ACCOUNT_ID` com a secrets del repositori GitHub. La primera publicació
+crea o actualitza el Worker `soundbox`; després de configurar aquests secrets, la pipeline
+de GitHub Actions publicarà automàticament els canvis a l'adreça del Worker.
+
 ---
 
 ## 👥 Credencials d'Usuaris de Prova (Demo)

@@ -40,7 +40,7 @@ export default function AddToPlaylistModal({
 
         <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-800">
           <img
-            src={album?.cover_url}
+            src={album?.cover_url || '/album-placeholder.svg'}
             alt={album?.title}
             className="w-12 h-12 rounded-xl object-cover"
           />

@@ -89,7 +89,7 @@ export default function ReviewModal({
         {/* Header */}
         <div className="flex items-center gap-4 mb-5 pb-4 border-b border-slate-800">
           <img
-            src={album?.cover_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80'}
+            src={album?.cover_url || '/album-placeholder.svg'}
             alt={album?.title}
             className="w-14 h-14 rounded-xl object-cover shadow-md"
           />
