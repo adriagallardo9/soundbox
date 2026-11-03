@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bookmark, Star, Music } from 'lucide-react';
+import { Bookmark, Music } from 'lucide-react';
 import { useData } from '../context/DataContext';
 
 const DEFAULT_COVER = '/album-placeholder.svg';
@@ -53,7 +53,7 @@ export default function AlbumCard({ album, onSelect }) {
         {/* Community Rating Badge */}
         {stats.average > 0 && (
           <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md border border-white/10 text-xs font-semibold text-emerald-400 shadow-md">
-            <Star className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
+            <img src="/soundbox-logo.svg" alt="" className="h-3.5 w-3.5 rounded-sm" />
             <span>{stats.average}</span>
             <span className="text-slate-400 text-[10px]">({stats.count})</span>
           </div>

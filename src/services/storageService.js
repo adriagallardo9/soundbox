@@ -176,10 +176,22 @@ export function getReviewsByAlbum(albumId) {
   const reviews = getReviews();
   const users = getUsers();
   return reviews
-    .filter(r => r.album_id === albumId)
+    .filter(r => (r.review_type || 'album') === 'album' && r.album_id === albumId)
     .map(r => ({
       ...r,
       user: users.find(u => u.id === r.user_id) || { username: 'Usuari anònim', avatar: '' }
+    }))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+export function getReviewsByTrack(trackId) {
+  const reviews = getReviews();
+  const users = getUsers();
+  return reviews
+    .filter((review) => review.review_type === 'track' && review.track_id === trackId)
+    .map((review) => ({
+      ...review,
+      user: users.find((user) => user.id === review.user_id) || { username: 'Usuari anònim', avatar: '' }
     }))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
@@ -191,18 +203,20 @@ export function getReviewsByUser(userId) {
     .filter(r => r.user_id === userId)
     .map(r => ({
       ...r,
-      album: albums.find(a => a.id === r.album_id) || { title: 'Àlbum desconegut', artist: '' }
+      album: r.review_type === 'track'
+        ? { id: r.album_id, title: r.track_album || 'Cançó', artist: r.track_artist || '', cover_url: r.track_cover_url }
+        : albums.find(a => a.id === r.album_id) || { title: 'Àlbum desconegut', artist: '' }
     }))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
 export function getAlbumRatingStats(albumId) {
-  const reviews = getReviews().filter(r => r.album_id === albumId);
+  const reviews = getReviews().filter(r => (r.review_type || 'album') === 'album' && r.album_id === albumId);
   if (reviews.length === 0) {
     return { average: 0, count: 0, distribution: [0, 0, 0, 0, 0] };
   }
   const sum = reviews.reduce((acc, r) => acc + Number(r.rating), 0);
-  const average = Number((sum / reviews.length).toFixed(1));
+  const average = Number((sum / reviews.length).toFixed(2));
   const distribution = [0, 0, 0, 0, 0];
   reviews.forEach(r => {
     const starIndex = Math.min(Math.max(Math.round(r.rating) - 1, 0), 4);
@@ -211,21 +225,46 @@ export function getAlbumRatingStats(albumId) {
   return { average, count: reviews.length, distribution };
 }
 
-export function addOrUpdateReview({ id, userId, albumId, rating, reviewText, albumMeta }) {
-  if (!reviewText || reviewText.trim().length === 0) {
-    throw new Error('El camp de text de la ressenya no pot estar buit.');
-  }
-  if (reviewText.length > 2000) {
+export function addOrUpdateReview({
+  id,
+  userId,
+  albumId,
+  rating,
+  reviewText,
+  albumMeta,
+  reviewType = 'album',
+  trackId = null,
+  trackMeta = null
+}) {
+  if ((reviewText || '').length > 2000) {
     throw new Error('La ressenya no pot superar el límit de 2000 caràcters.');
   }
+  if (!['album', 'track'].includes(reviewType)) {
+    throw new Error('El tipus de ressenya no és vàlid.');
+  }
+  if (reviewType === 'track' && (!trackId || !trackMeta?.title)) {
+    throw new Error('Falten les dades de la cançó per publicar el comentari.');
+  }
+  if (!Number.isFinite(Number(rating)) || Number(rating) < 0.1 || Number(rating) > 5 || Math.abs(Number(rating) * 10 - Math.round(Number(rating) * 10)) > 1e-8) {
+    throw new Error('La valoració ha d’estar entre 0,1 i 5, en increments de 0,1.');
+  }
 
-  // Assegura que l'àlbum estigui guardat a la BDD local
-  if (albumMeta) {
+  if (reviewType === 'album' && albumMeta) {
     saveAlbum(albumMeta);
   }
 
   const reviews = getReviews();
   const numericRating = Number(rating);
+  const metadata = reviewType === 'track'
+    ? {
+        review_type: 'track',
+        track_id: trackId,
+        track_title: trackMeta?.title || '',
+        track_artist: trackMeta?.artist || '',
+        track_album: trackMeta?.album || '',
+        track_cover_url: trackMeta?.cover_url || null
+      }
+    : { review_type: 'album' };
 
   if (id) {
     // Actualitzar ressenya existent
@@ -233,8 +272,9 @@ export function addOrUpdateReview({ id, userId, albumId, rating, reviewText, alb
     if (index >= 0) {
       reviews[index] = {
         ...reviews[index],
+        ...metadata,
         rating: numericRating,
-        review_text: reviewText.trim(),
+        review_text: (reviewText || '').trim(),
         updated_at: new Date().toISOString()
       };
       setItem(KEYS.REVIEWS, reviews);
@@ -243,12 +283,23 @@ export function addOrUpdateReview({ id, userId, albumId, rating, reviewText, alb
   }
 
   // Comprovar si aquest usuari ja tenia una ressenya per aquest àlbum
-  const existingIndex = reviews.findIndex(r => r.user_id === userId && r.album_id === albumId);
+  const existingIndex = reviewType === 'track'
+    ? reviews.findIndex((review) => (
+        review.user_id === userId &&
+        review.review_type === 'track' &&
+        review.track_id === trackId
+      ))
+    : reviews.findIndex((review) => (
+        review.user_id === userId &&
+        (review.review_type || 'album') === 'album' &&
+        review.album_id === albumId
+      ));
   if (existingIndex >= 0) {
     reviews[existingIndex] = {
       ...reviews[existingIndex],
+      ...metadata,
       rating: numericRating,
-      review_text: reviewText.trim(),
+      review_text: (reviewText || '').trim(),
       updated_at: new Date().toISOString()
     };
     setItem(KEYS.REVIEWS, reviews);
@@ -260,8 +311,9 @@ export function addOrUpdateReview({ id, userId, albumId, rating, reviewText, alb
     id: Date.now(),
     user_id: userId,
     album_id: albumId,
+    ...metadata,
     rating: numericRating,
-    review_text: reviewText.trim(),
+    review_text: (reviewText || '').trim(),
     created_at: new Date().toISOString()
   };
 

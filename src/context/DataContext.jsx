@@ -6,6 +6,7 @@ import {
   getReviews,
   getPlaylists,
   getReviewsByAlbum,
+  getReviewsByTrack,
   getReviewsByUser,
   getAlbumRatingStats,
   addOrUpdateReview,
@@ -56,7 +57,20 @@ export function DataProvider({ children }) {
     return getReviewsByAlbum(albumId);
   }, [dataVersion]);
 
-  const submitReview = useCallback(({ id, albumId, rating, reviewText, albumMeta }) => {
+  const getTrackReviewsList = useCallback((trackId) => (
+    getReviewsByTrack(trackId)
+  ), [dataVersion]);
+
+  const submitReview = useCallback(({
+    id,
+    albumId,
+    rating,
+    reviewText,
+    albumMeta,
+    reviewType = 'album',
+    trackId = null,
+    trackMeta = null
+  }) => {
     if (!currentUser) {
       addToast('Cal iniciar sessió per publicar una ressenya.', 'error');
       return false;
@@ -68,10 +82,16 @@ export function DataProvider({ children }) {
         albumId,
         rating,
         reviewText,
-        albumMeta
+        albumMeta,
+        reviewType,
+        trackId,
+        trackMeta
       });
       refresh();
-      addToast('Ressenya publicada correctament!', 'success');
+      const successMessage = reviewText.trim()
+        ? reviewType === 'track' ? 'Valoració i comentari desats!' : 'Valoració i ressenya desades!'
+        : 'Valoració desada!';
+      addToast(successMessage, 'success');
       return true;
     } catch (err) {
       addToast(err.message, 'error');
@@ -185,6 +205,7 @@ export function DataProvider({ children }) {
         refresh,
         getAlbumStats,
         getAlbumReviews,
+        getTrackReviews: getTrackReviewsList,
         submitReview,
         removeReview,
         checkInListenlist,

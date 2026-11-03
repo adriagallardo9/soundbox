@@ -153,6 +153,16 @@ export default function HomePage({ onNavigate }) {
               review={rev}
               showAlbum={true}
               onSelectAlbum={(id) => onNavigate('album', { albumId: id })}
+              onSelectTrack={(review) => onNavigate('track', {
+                track: {
+                  id: review.track_id,
+                  title: review.track_title,
+                  artist: review.track_artist,
+                  album: review.track_album,
+                  albumId: review.album_id,
+                  cover_url: review.track_cover_url,
+                },
+              })}
             />
           ))}
         </div>

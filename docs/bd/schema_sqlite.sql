@@ -30,8 +30,14 @@ CREATE TABLE IF NOT EXISTS albums (
 CREATE TABLE IF NOT EXISTS reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    album_id TEXT NOT NULL,
-    rating REAL NOT NULL, -- Valor d'1.0 a 5.0
+    album_id TEXT,
+    rating REAL, -- Valor d'1.0 a 5.0 per a les ressenyes d'àlbum
+    review_type TEXT NOT NULL DEFAULT 'album',
+    track_id TEXT,
+    track_title TEXT,
+    track_artist TEXT,
+    track_album TEXT,
+    track_cover_url TEXT,
     review_text TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

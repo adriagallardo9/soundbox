@@ -8,7 +8,10 @@ export default function ReviewModal({
   isOpen,
   onClose,
   album,
+  track = null,
+  targetType = 'album',
   initialReview = null,
+  initialRating = null,
   onRequireLogin = null
 }) {
   const { currentUser } = useAuth();
@@ -20,14 +23,14 @@ export default function ReviewModal({
 
   useEffect(() => {
     if (initialReview) {
-      setRating(Number(initialReview.rating) || 5.0);
+      setRating(initialRating ?? (Number(initialReview.rating) || (targetType === 'track' ? 0 : 5.0)));
       setReviewText(initialReview.review_text || '');
     } else {
-      setRating(5.0);
+      setRating(initialRating ?? (targetType === 'track' ? 0 : 5.0));
       setReviewText('');
     }
     setErrorMessage('');
-  }, [initialReview, isOpen]);
+  }, [initialReview?.id, initialReview?.rating, initialReview?.review_text, initialRating, isOpen, targetType]);
 
   if (!isOpen) return null;
 
@@ -43,8 +46,8 @@ export default function ReviewModal({
 
     // Validació (Excepció 2 de la memòria: camp buit o > 2000 caràcters)
     const trimmed = reviewText.trim();
-    if (!trimmed) {
-      setErrorMessage("La ressenya no pot estar buida. Escriu la teva opinió sobre l'àlbum.");
+    if (!Number.isFinite(Number(rating)) || Number(rating) < 0.1 || Number(rating) > 5 || Math.abs(Number(rating) * 10 - Math.round(Number(rating) * 10)) > 1e-8) {
+      setErrorMessage('Tria una valoració de 0,1 a 5 logos de SoundBoxd, en increments de 0,1.');
       return;
     }
 
@@ -55,10 +58,13 @@ export default function ReviewModal({
 
     const success = submitReview({
       id: initialReview?.id,
-      albumId: album.id,
+      albumId: targetType === 'track' ? track?.albumId || null : album.id,
       rating,
       reviewText: trimmed,
-      albumMeta: album
+      albumMeta: targetType === 'album' ? album : null,
+      reviewType: targetType,
+      trackId: targetType === 'track' ? track?.id : null,
+      trackMeta: targetType === 'track' ? track : null
     });
 
     if (success) {
@@ -89,16 +95,22 @@ export default function ReviewModal({
         {/* Header */}
         <div className="flex items-center gap-4 mb-5 pb-4 border-b border-slate-800">
           <img
-            src={album?.cover_url || '/album-placeholder.svg'}
-            alt={album?.title}
+            src={(targetType === 'track' ? track?.cover_url : album?.cover_url) || '/album-placeholder.svg'}
+            alt={targetType === 'track' ? track?.title : album?.title}
             className="w-14 h-14 rounded-xl object-cover shadow-md"
           />
           <div>
             <h3 id="modal-title" className="font-extrabold text-lg text-white">
-              {initialReview ? 'Editar la teva ressenya' : 'Puntuar i ressenyar'}
+              {targetType === 'track'
+                ? initialReview ? 'Editar valoració i comentari' : 'Valorar la cançó'
+                : initialReview ? 'Editar la teva ressenya' : 'Puntuar i ressenyar'}
             </h3>
             <p className="text-xs text-slate-400 line-clamp-1">
-              {album?.title} · <span className="text-emerald-400">{album?.artist}</span>
+              {targetType === 'track' ? track?.title : album?.title}
+              {' · '}
+              <span className="text-emerald-400">
+                {targetType === 'track' ? track?.artist : album?.artist}
+              </span>
             </p>
           </div>
         </div>
@@ -116,29 +128,30 @@ export default function ReviewModal({
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Rating Stars Selection */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              La teva valoració (1 a 5 estrelles)
-            </label>
-            <div className="flex items-center gap-4 p-3 bg-slate-900/60 rounded-2xl border border-slate-800">
-              <RatingStars
-                value={rating}
-                onChange={(newVal) => {
-                  setRating(newVal);
-                  setErrorMessage('');
-                }}
-                interactive
-                size="lg"
-              />
-              <span className="text-xl font-black text-emerald-400">{rating.toFixed(1)}</span>
+          {(
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                La teva valoració (0,1 a 5 logos de SoundBoxd)
+              </label>
+              <div className="flex items-center gap-4 p-3 bg-slate-900/60 rounded-2xl border border-slate-800">
+                <RatingStars
+                  value={rating}
+                  onChange={(newVal) => {
+                    setRating(newVal);
+                    setErrorMessage('');
+                  }}
+                  interactive
+                  size="lg"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Review Text */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label htmlFor="review-text" className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                El teu comentari / ressenya
+                {targetType === 'track' ? 'Comentari (opcional)' : 'Ressenya (opcional)'}
               </label>
               <span className={`text-[11px] font-mono ${isOverLimit ? 'text-rose-400 font-bold' : 'text-slate-500'}`}>
                 {charCount} / 2000 caràcters
@@ -152,7 +165,9 @@ export default function ReviewModal({
                 setReviewText(e.target.value);
                 if (errorMessage) setErrorMessage('');
               }}
-              placeholder="Què t'ha transmès aquest disc? Quines cançons en destaques?"
+              placeholder={targetType === 'track'
+                ? 'Afegeix un comentari (opcional) sobre aquesta cançó...'
+                : "Què t'ha transmès aquest disc? (opcional)"}
               className="w-full px-4 py-3 bg-slate-900/80 border border-slate-800 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-transparent transition-all resize-none"
             />
           </div>
@@ -171,7 +186,11 @@ export default function ReviewModal({
               className="px-6 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-lg shadow-emerald-500/25 flex items-center gap-2"
             >
               <Check className="w-4 h-4 stroke-[3]" />
-              {initialReview ? 'Actualitzar ressenya' : 'Publicar ressenya'}
+              {!reviewText.trim()
+                ? 'Desar valoració'
+                : initialReview
+                ? targetType === 'track' ? 'Actualitzar comentari' : 'Actualitzar ressenya'
+                : targetType === 'track' ? 'Publicar comentari' : 'Publicar ressenya'}
             </button>
           </div>
         </form>

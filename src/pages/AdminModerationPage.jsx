@@ -19,7 +19,10 @@ export default function AdminModerationPage({ onNavigate }) {
   const enrichedReviews = allReviews.map(r => ({
     ...r,
     user: users.find(u => u.id === r.user_id) || { username: 'Anònim', name: 'Usuari' },
-    album: albums.find(a => a.id === r.album_id) || { title: 'Àlbum', artist: 'Artista' }
+    album: albums.find(a => a.id === r.album_id) || {
+      title: r.track_title || 'Àlbum',
+      artist: r.track_artist || 'Artista'
+    }
   }));
 
   const filteredReviews = enrichedReviews.filter(rev => {
@@ -89,11 +92,11 @@ export default function AdminModerationPage({ onNavigate }) {
             className="bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 outline-none w-full sm:w-auto"
           >
             <option value="all">Totes les puntuacions</option>
-            <option value="5">5 estrelles</option>
-            <option value="4">4 estrelles</option>
-            <option value="3">3 estrelles</option>
-            <option value="2">2 estrelles</option>
-            <option value="1">1 estrella</option>
+            <option value="5">5 logos SoundBoxd</option>
+            <option value="4">4 logos SoundBoxd</option>
+            <option value="3">3 logos SoundBoxd</option>
+            <option value="2">2 logos SoundBoxd</option>
+            <option value="1">1 logo SoundBoxd</option>
           </select>
         </div>
       </div>

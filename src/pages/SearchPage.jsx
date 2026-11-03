@@ -1,31 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { getArtistDiscography, getTrackPreview, searchAll } from '../services/spotifyApi';
+import { getArtistDiscography, resolveTrackForPlayback, searchAll } from '../services/spotifyApi';
+import { playPreview, stopPreview, subscribeToPlayback } from '../services/audioPlayer';
+import SpotifyEmbedPlayer from '../components/SpotifyEmbedPlayer';
 import { useNotification } from '../context/NotificationContext';
 import {
   Search, Loader2, Sparkles, AlertTriangle, ArrowLeft,
   Music, Mic2, Disc3, Play, Pause, ExternalLink,
   Clock, Users, BarChart2, Volume2, VolumeX,
 } from 'lucide-react';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Gestió global d'àudio — un sol reproductor actiu alhora
-// ─────────────────────────────────────────────────────────────────────────────
-const audioState = {
-  current: null,        // element <audio> actiu
-  setActive: null,      // setter de l'ID del track actiu
-};
-
-function stopAllAudio() {
-  if (audioState.current) {
-    audioState.current.pause();
-    audioState.current.currentTime = 0;
-    audioState.current = null;
-  }
-  if (audioState.setActive) {
-    audioState.setActive(null);
-    audioState.setActive = null;
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
@@ -163,68 +145,75 @@ function AlbumCard({ album, onNavigate }) {
   );
 }
 
-// ID del track que s'està reproduint ara (compartit entre totes les files)
-let globalPlayingId = null;
-const playingListeners = new Set();
-function notifyPlayingChange(id) {
-  globalPlayingId = id;
-  playingListeners.forEach((fn) => fn(id));
-}
-
-function TrackRow({ track, index, onNavigate, onArtistClick }) {
+function TrackRow({ track, index, onNavigate, onArtistClick, onPlaybackError }) {
   const [playing, setPlaying]           = useState(false);
   const [previewUrl, setPreviewUrl]     = useState(track.preview_url);
   const [fetchingPreview, setFetching]  = useState(false);
   const [noPreview, setNoPreview]       = useState(false);
-  const audioRef = useRef(null);
+  const [embedTrack, setEmbedTrack]     = useState(null);
+  const previewRequestId = useRef(0);
 
-  // Sincronitzar estat local amb el reproductor global
   useEffect(() => {
-    const handler = (id) => {
-      if (id !== track.id && playing) {
-        setPlaying(false);
-        audioRef.current?.pause();
-      }
-    };
-    playingListeners.add(handler);
+    const unsubscribe = subscribeToPlayback((id) => setPlaying(id === track.id));
     return () => {
-      playingListeners.delete(handler);
-      audioRef.current?.pause();
+      previewRequestId.current += 1;
+      unsubscribe();
     };
-  }, [track.id, playing]);
+  }, [track.id]);
 
   const handlePlay = async (e) => {
     e.stopPropagation();
-    if (noPreview) return;
+    if (noPreview || fetchingPreview) return;
 
-    // Aturar si ja s'estava reproduint
     if (playing) {
-      audioRef.current?.pause();
-      setPlaying(false);
-      notifyPlayingChange(null);
+      stopPreview(track.id);
       return;
     }
 
-    // Obtenir preview URL si no la tenim
-    let url = previewUrl;
-    if (!url) {
-      setFetching(true);
-      url = await getTrackPreview(track.id);
-      setFetching(false);
-      if (!url) {
-        setNoPreview(true);
-        return;
+    if (previewUrl) {
+      const started = await playPreview(track.id, previewUrl, onPlaybackError);
+      if (!started) {
+        const requestId = ++previewRequestId.current;
+        setFetching(true);
+        try {
+          const resolvedTrack = await resolveTrackForPlayback(track);
+          if (previewRequestId.current === requestId && resolvedTrack) setEmbedTrack(resolvedTrack);
+        } catch (error) {
+          console.error('[Spotify] No s\'ha pogut preparar el reproductor incrustat:', error);
+          onPlaybackError();
+        } finally {
+          if (previewRequestId.current === requestId) setFetching(false);
+        }
       }
-      setPreviewUrl(url);
+      return;
     }
 
-    // Aturar qualsevol altre track i reproduir aquest
-    notifyPlayingChange(track.id);
-    // Donem un tick perquè el nou src s'assigni al <audio>
-    setTimeout(() => {
-      audioRef.current?.play().catch(() => {});
-    }, 0);
-    setPlaying(true);
+    const requestId = ++previewRequestId.current;
+    setFetching(true);
+    try {
+      const resolvedTrack = await resolveTrackForPlayback(track);
+      if (previewRequestId.current !== requestId) return;
+      if (!resolvedTrack) {
+        setNoPreview(true);
+        onPlaybackError();
+        return;
+      }
+
+      if (resolvedTrack.preview_url) {
+        const url = resolvedTrack.preview_url;
+        setPreviewUrl(url);
+        const started = await playPreview(track.id, url, onPlaybackError);
+        if (!started) setEmbedTrack(resolvedTrack);
+      } else {
+        stopPreview();
+        setEmbedTrack(resolvedTrack);
+      }
+    } catch (error) {
+      console.error('[Spotify] No s\'ha pogut preparar la reproducció:', error);
+      onPlaybackError();
+    } finally {
+      if (previewRequestId.current === requestId) setFetching(false);
+    }
   };
 
   const btnClass = playing
@@ -246,7 +235,7 @@ function TrackRow({ track, index, onNavigate, onArtistClick }) {
           {index}
         </span>
         <button
-          title={noPreview ? 'Preview no disponible' : playing ? 'Atura' : 'Reproduir 30s'}
+          title={noPreview ? 'No s’ha trobat a Spotify' : playing ? 'Pausa' : 'Reproduir'}
           onClick={handlePlay}
           disabled={fetchingPreview}
           className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${btnClass}`}
@@ -262,13 +251,6 @@ function TrackRow({ track, index, onNavigate, onArtistClick }) {
           )}
         </button>
 
-        {previewUrl && (
-          <audio
-            ref={audioRef}
-            src={previewUrl}
-            onEnded={() => { setPlaying(false); notifyPlayingChange(null); }}
-          />
-        )}
       </div>
 
       {/* Portada mini */}
@@ -342,6 +324,9 @@ function TrackRow({ track, index, onNavigate, onArtistClick }) {
           </a>
         )}
       </div>
+      {embedTrack && (
+        <SpotifyEmbedPlayer track={embedTrack} onClose={() => setEmbedTrack(null)} />
+      )}
     </div>
   );
 }
@@ -397,6 +382,8 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
   const { addToast } = useNotification();
   const inputRef = useRef(null);
   const artistRequestId = useRef(0);
+
+  useEffect(() => () => stopPreview(), []);
 
   const doSearch = async (searchTerm) => {
     const q = (searchTerm !== undefined ? searchTerm : query).trim();
@@ -773,6 +760,7 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
                       index={i + 1}
                       onNavigate={onNavigate}
                       onArtistClick={handleArtistFromTrack}
+                      onPlaybackError={() => addToast('No s\'ha pogut reproduir aquesta previsualització.', 'error')}
                     />
                   ))}
                 </div>

@@ -8,7 +8,8 @@ export default function ReviewCard({
   review,
   onEdit = null,
   showAlbum = false,
-  onSelectAlbum = null
+  onSelectAlbum = null,
+  onSelectTrack = null
 }) {
   const { currentUser, isAdmin } = useAuth();
   const { removeReview } = useData();
@@ -36,7 +37,29 @@ export default function ReviewCard({
   return (
     <article className="p-5 rounded-2xl bg-[#131c2e]/90 border border-slate-800 hover:border-slate-700/80 transition-all flex flex-col justify-between gap-3 shadow-md">
       {/* Optional Album Header for Profile / Feed */}
-      {showAlbum && review.album && (
+      {showAlbum && review.review_type === 'track' && review.track_title && (
+        <button
+          type="button"
+          onClick={() => onSelectTrack && onSelectTrack(review)}
+          className="flex items-center gap-3 border-b border-slate-800/80 pb-3 text-left group"
+        >
+          <img
+            src={review.track_cover_url || '/album-placeholder.svg'}
+            alt={review.track_title}
+            className="h-12 w-12 rounded-lg object-cover group-hover:scale-105 transition-transform"
+          />
+          <span>
+            <span className="block font-bold text-sm text-slate-100 group-hover:text-emerald-400 transition-colors">
+              {review.track_title}
+            </span>
+            <span className="block text-xs text-slate-400">
+              {review.track_artist} · {review.track_album}
+            </span>
+          </span>
+        </button>
+      )}
+
+      {showAlbum && review.review_type !== 'track' && review.album && (
         <div
           onClick={() => onSelectAlbum && onSelectAlbum(review.album.id)}
           className="flex items-center gap-3 pb-3 border-b border-slate-800/80 cursor-pointer group"
@@ -85,15 +108,17 @@ export default function ReviewCard({
 
         {/* Rating and Date */}
         <div className="flex flex-col items-end gap-1">
-          <RatingStars value={review.rating} size="sm" showNumber />
+          {review.rating != null && <RatingStars value={review.rating} size="sm" showNumber />}
           <span className="text-[11px] text-slate-500">{formattedDate}</span>
         </div>
       </div>
 
       {/* Review Content */}
-      <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line my-1">
-        {review.review_text}
-      </p>
+      {review.review_text && (
+        <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line my-1">
+          {review.review_text}
+        </p>
+      )}
 
       {/* Footer / Action Buttons (RF-08 & RF-09) */}
       {canDelete && (

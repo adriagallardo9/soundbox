@@ -201,6 +201,16 @@ export default function ProfilePage({ userId = null, onNavigate }) {
                   review={rev}
                   showAlbum={true}
                   onSelectAlbum={(albId) => onNavigate('album', { albumId: albId })}
+                  onSelectTrack={(review) => onNavigate('track', {
+                    track: {
+                      id: review.track_id,
+                      title: review.track_title,
+                      artist: review.track_artist,
+                      album: review.track_album,
+                      albumId: review.album_id,
+                      cover_url: review.track_cover_url,
+                    },
+                  })}
                   onEdit={handleEditReview}
                 />
               ))}
@@ -304,6 +314,15 @@ export default function ProfilePage({ userId = null, onNavigate }) {
           setEditingReview(null);
         }}
         album={editingReview?.album}
+        targetType={editingReview?.review_type || 'album'}
+        track={editingReview?.review_type === 'track' ? {
+          id: editingReview.track_id,
+          title: editingReview.track_title,
+          artist: editingReview.track_artist,
+          album: editingReview.track_album,
+          albumId: editingReview.album_id,
+          cover_url: editingReview.track_cover_url,
+        } : null}
         initialReview={editingReview}
       />
 

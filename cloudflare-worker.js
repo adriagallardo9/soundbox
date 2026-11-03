@@ -54,6 +54,23 @@ async function proxySpotifyApi(request) {
   });
 }
 
+async function serveAsset(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  if (!response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  headers.set('Pragma', 'no-cache');
+  headers.set('Expires', '0');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -62,7 +79,6 @@ export default {
       if (request.method !== 'POST') {
         return jsonError(405, 'Only POST requests are supported.');
       }
-
       try {
         return await getSpotifyToken(env);
       } catch (error) {
@@ -80,6 +96,6 @@ export default {
       }
     }
 
-    return env.ASSETS.fetch(request);
+    return serveAsset(request, env);
   },
 };

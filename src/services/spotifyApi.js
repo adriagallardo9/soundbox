@@ -284,6 +284,45 @@ export async function getTrackPreview(trackId) {
   }
 }
 
+export async function resolveTrackForPlayback(track, artistOverride = '') {
+  const spotifyIdFromUrl = track.spotifyUrl?.match(/open\.spotify\.com\/track\/([A-Za-z0-9]{22})/)?.[1];
+  const trackId = /^[A-Za-z0-9]{22}$/.test(track.id || '') ? track.id : spotifyIdFromUrl;
+  const artist = (artistOverride || track.artist || '').split(',')[0].trim();
+
+  if (trackId) {
+    return {
+      ...track,
+      id: trackId,
+      artist,
+      preview_url: track.preview_url || await getTrackPreview(trackId),
+      spotifyUrl: track.spotifyUrl || `https://open.spotify.com/track/${trackId}`,
+    };
+  }
+
+  if (!track.title) return null;
+  const token = await getToken();
+  if (!token) return null;
+
+  const escapeQuery = (value) => value.replace(/["\\]/g, '\\$&');
+  const query = encodeURIComponent(
+    `track:"${escapeQuery(track.title)}"${artist ? ` artist:"${escapeQuery(artist)}"` : ''}`,
+  );
+  const data = await spotifyGet(`/v1/search?q=${query}&type=track&limit=10&market=ES`, token);
+  const normalizedTitle = normalizeText(track.title);
+  const normalizedArtist = normalizeText(artist);
+  const match = parseTracks(data.tracks?.items || []).find((candidate) => {
+    const candidateTitle = normalizeText(candidate.title);
+    if (candidateTitle !== normalizedTitle && !candidateTitle.startsWith(`${normalizedTitle} `)) return false;
+    if (!normalizedArtist) return true;
+    return candidate.artist.split(',').some((name) => {
+      const candidateArtist = normalizeText(name);
+      return candidateArtist === normalizedArtist || candidateArtist.includes(normalizedArtist);
+    });
+  });
+
+  return match || null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPATIBILITAT — mantinguts per a AlbumDetailPage i altres components
 // ─────────────────────────────────────────────────────────────────────────────

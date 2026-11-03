@@ -10,6 +10,7 @@ import ToastContainer from './components/ToastContainer';
 import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
 import AlbumDetailPage from './pages/AlbumDetailPage';
+import TrackDetailPage from './pages/TrackDetailPage';
 import ProfilePage from './pages/ProfilePage';
 import PlaylistsPage from './pages/PlaylistsPage';
 import PlaylistDetailPage from './pages/PlaylistDetailPage';
@@ -24,17 +25,36 @@ function AppContent() {
   // Parse URL hash for easy bookmarking and refresh support
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      const hash = window.location.hash.replace(/^#\/?/, '');
       if (!hash) {
         setCurrentView('home');
         setViewParams({});
         return;
       }
 
-      const [view, ...rest] = hash.split('/');
+      const [hashPath, hashQuery = ''] = hash.split('?');
+      const [view, ...rest] = hashPath.split('/');
       if (view === 'album' && rest[0]) {
         setCurrentView('album');
         setViewParams({ albumId: rest[0] });
+      } else if (view === 'track' && rest[0]) {
+        const params = new URLSearchParams(hashQuery);
+        setCurrentView('track');
+        setViewParams({
+          track: {
+            id: decodeURIComponent(rest[0]),
+            title: params.get('title') || '',
+            artist: params.get('artist') || '',
+            album: params.get('album') || '',
+            albumId: params.get('albumId') || null,
+            cover_url: params.get('cover_url') || '',
+            duration: params.get('duration') || '',
+            duration_ms: Number(params.get('duration_ms')) || 0,
+            preview_url: params.get('preview_url') || null,
+            spotifyUrl: params.get('spotifyUrl') || null,
+            track_number: Number(params.get('track_number')) || null,
+          },
+        });
       } else if (view === 'playlist' && rest[0]) {
         setCurrentView('playlist-detail');
         setViewParams({ playlistId: rest[0] });
@@ -64,6 +84,18 @@ function AppContent() {
     // Update hash
     if (view === 'home') window.location.hash = '#/';
     else if (view === 'album') window.location.hash = `#/album/${params.albumId}`;
+    else if (view === 'track') {
+      const track = params.track || {};
+      const trackParams = new URLSearchParams();
+      ['title', 'artist', 'album', 'albumId', 'cover_url', 'duration', 'duration_ms', 'preview_url', 'spotifyUrl', 'track_number']
+        .forEach((key) => {
+          if (track[key] !== null && track[key] !== undefined && track[key] !== '') {
+            trackParams.set(key, track[key]);
+          }
+        });
+      const trackId = track.id || track.title;
+      window.location.hash = `#/track/${encodeURIComponent(trackId)}?${trackParams.toString()}`;
+    }
     else if (view === 'playlist-detail') window.location.hash = `#/playlist/${params.playlistId}`;
     else if (view === 'profile') window.location.hash = params.userId ? `#/profile/${params.userId}` : '#/profile';
     else if (view === 'search') window.location.hash = params.query ? `#/search/${encodeURIComponent(params.query)}` : '#/search';
@@ -94,6 +126,13 @@ function AppContent() {
         {currentView === 'album' && (
           <AlbumDetailPage
             albumId={viewParams.albumId}
+            onNavigate={navigateTo}
+          />
+        )}
+
+        {currentView === 'track' && (
+          <TrackDetailPage
+            track={viewParams.track}
             onNavigate={navigateTo}
           />
         )}

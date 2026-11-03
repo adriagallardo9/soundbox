@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { getAlbumDetails } from '../services/spotifyApi';
+import React, { useState, useEffect, useRef } from 'react';
+import { getAlbumDetails, resolveTrackForPlayback } from '../services/spotifyApi';
+import { playPreview, stopPreview, subscribeToPlayback } from '../services/audioPlayer';
+import SpotifyEmbedPlayer from '../components/SpotifyEmbedPlayer';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
@@ -22,7 +24,8 @@ import {
   MessageSquarePlus,
   Loader2,
   Clock,
-  Sparkles
+  Sparkles,
+  VolumeX
 } from 'lucide-react';
 
 const DEFAULT_COVER = '/album-placeholder.svg';
@@ -48,10 +51,25 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
 
   // Audio preview playback
   const [playingTrackId, setPlayingTrackId] = useState(null);
-  const [audioInstance, setAudioInstance] = useState(null);
+  const [loadingPreviewTrackId, setLoadingPreviewTrackId] = useState(null);
+  const [unavailablePreviewIds, setUnavailablePreviewIds] = useState(() => new Set());
+  const [embedTrack, setEmbedTrack] = useState(null);
+  const playbackRequestId = useRef(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToPlayback(setPlayingTrackId);
+    return () => {
+      stopPreview();
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
+    setPlayingTrackId(null);
+    setLoadingPreviewTrackId(null);
+    setUnavailablePreviewIds(new Set());
+    setEmbedTrack(null);
     setLoading(true);
 
     getAlbumDetails(albumId, (msg) => addToast(msg, 'info'))
@@ -68,40 +86,74 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
 
     return () => {
       isMounted = false;
-      if (audioInstance) {
-        audioInstance.pause();
-      }
+      playbackRequestId.current += 1;
+      stopPreview();
     };
-  }, [albumId]);
+  }, [albumId, addToast]);
 
-  const handlePlayPreview = (track) => {
-    if (!track.preview_url) {
-      addToast('No hi ha fragment d\'àudio disponible per a aquesta pista.', 'info');
-      return;
-    }
+  const handlePlayPreview = async (track) => {
+    if (unavailablePreviewIds.has(track.id)) return;
 
+    const requestId = ++playbackRequestId.current;
+    setLoadingPreviewTrackId(null);
     if (playingTrackId === track.id) {
-      if (audioInstance) {
-        audioInstance.pause();
-      }
-      setPlayingTrackId(null);
-      setAudioInstance(null);
+      stopPreview(track.id);
       return;
     }
 
-    if (audioInstance) {
-      audioInstance.pause();
+    stopPreview();
+
+    if (track.preview_url) {
+      const started = await playPreview(
+        track.id,
+        track.preview_url,
+        () => addToast('No s\'ha pogut reproduir la previsualització d\'aquesta pista.', 'error'),
+      );
+      if (!started) {
+        setLoadingPreviewTrackId(track.id);
+        try {
+          const resolvedTrack = await resolveTrackForPlayback(track, album.artist);
+          if (playbackRequestId.current === requestId && resolvedTrack) setEmbedTrack(resolvedTrack);
+        } catch (error) {
+          console.error('[Spotify] No s\'ha pogut preparar el reproductor incrustat:', error);
+          addToast('No s\'ha pogut obrir el reproductor de Spotify.', 'error');
+        } finally {
+          if (playbackRequestId.current === requestId) setLoadingPreviewTrackId(null);
+        }
+      }
+      return;
     }
 
-    const newAudio = new Audio(track.preview_url);
-    newAudio.play().catch(e => console.warn('Audio play error:', e));
-    newAudio.onended = () => {
-      setPlayingTrackId(null);
-      setAudioInstance(null);
-    };
+    setLoadingPreviewTrackId(track.id);
+    try {
+      const resolvedTrack = await resolveTrackForPlayback(track, album.artist);
+      if (playbackRequestId.current !== requestId) return;
+      setLoadingPreviewTrackId(null);
 
-    setPlayingTrackId(track.id);
-    setAudioInstance(newAudio);
+      if (!resolvedTrack) {
+        setUnavailablePreviewIds((current) => new Set(current).add(track.id));
+        addToast('No s’ha trobat aquesta pista a Spotify.', 'info');
+        return;
+      }
+
+      if (resolvedTrack.preview_url) {
+        const started = await playPreview(
+          track.id,
+          resolvedTrack.preview_url,
+          () => addToast('No s\'ha pogut reproduir la previsualització d\'aquesta pista.', 'error'),
+        );
+        if (!started) setEmbedTrack(resolvedTrack);
+      } else {
+        stopPreview();
+        setEmbedTrack(resolvedTrack);
+      }
+    } catch (error) {
+      if (playbackRequestId.current === requestId) {
+        setLoadingPreviewTrackId(null);
+        console.error('[Spotify] No s\'ha pogut preparar la reproducció:', error);
+        addToast('No s\'ha pogut trobar la pista a Spotify.', 'error');
+      }
+    }
   };
 
   if (loading) {
@@ -223,7 +275,7 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-4xl font-black text-white">
-                    {stats.average > 0 ? stats.average.toFixed(1) : '—'}
+                    {stats.average > 0 ? Number(stats.average.toFixed(2)).toLocaleString('ca-ES') : '—'}
                   </span>
                   <div>
                     <RatingStars value={stats.average} size="md" />
@@ -330,28 +382,62 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
                         {idx + 1}
                       </span>
 
-                      {/* Play Preview Button if available */}
-                      {track.preview_url ? (
-                        <button
-                          type="button"
-                          onClick={() => handlePlayPreview(track)}
-                          className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
-                            isPlaying
-                              ? 'bg-emerald-500 text-slate-950 shadow-md'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                          }`}
-                          title={isPlaying ? "Pausar previsualització" : "Escoltar 30s"}
-                          aria-label={isPlaying ? "Pausar àudio" : `Escoltar pista ${track.title}`}
-                        >
-                          {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
-                        </button>
-                      ) : (
-                        <div className="w-7 h-7 flex-shrink-0" />
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handlePlayPreview(track)}
+                        disabled={
+                          loadingPreviewTrackId === track.id ||
+                          unavailablePreviewIds.has(track.id)
+                        }
+                        className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+                          isPlaying
+                            ? 'bg-emerald-500 text-slate-950 shadow-md'
+                            : unavailablePreviewIds.has(track.id)
+                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                        }`}
+                        title={
+                          unavailablePreviewIds.has(track.id)
+                            ? 'No s’ha trobat a Spotify'
+                            : isPlaying
+                            ? 'Pausar'
+                            : 'Reproduir'
+                        }
+                        aria-label={
+                          unavailablePreviewIds.has(track.id)
+                            ? `No s’ha trobat ${track.title} a Spotify`
+                            : isPlaying
+                            ? `Pausar ${track.title}`
+                            : `Reproduir ${track.title}`
+                        }
+                      >
+                        {loadingPreviewTrackId === track.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : unavailablePreviewIds.has(track.id) ? (
+                          <VolumeX className="w-3.5 h-3.5" />
+                        ) : isPlaying ? (
+                          <Pause className="w-3.5 h-3.5" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 ml-0.5" />
+                        )}
+                      </button>
 
-                      <span className="font-medium truncate text-xs sm:text-sm">
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('track', {
+                          track: {
+                            ...track,
+                            artist: album.artist,
+                            album: album.title,
+                            albumId: album.id,
+                            cover_url: album.cover_url,
+                          },
+                        })}
+                        className="font-medium truncate text-left text-xs sm:text-sm hover:text-emerald-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded"
+                        aria-label={`Obrir la cançó ${track.title}`}
+                      >
                         {track.title}
-                      </span>
+                      </button>
                     </div>
 
                     <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
@@ -363,6 +449,9 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
               })
             )}
           </div>
+          {embedTrack && (
+            <SpotifyEmbedPlayer track={embedTrack} onClose={() => setEmbedTrack(null)} />
+          )}
         </section>
 
         {/* Community Reviews Column (7 cols) */}

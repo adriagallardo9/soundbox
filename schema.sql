@@ -28,8 +28,14 @@ CREATE TABLE IF NOT EXISTS albums (
 CREATE TABLE IF NOT EXISTS reviews (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    album_id VARCHAR(100) NOT NULL,
-    rating DECIMAL(2,1) NOT NULL, -- Valor d'1.0 a 5.0
+    album_id VARCHAR(100),
+    rating DECIMAL(3,2), -- Valor de 0.25 a 5.00 per a les ressenyes d'àlbum o cançó
+    review_type VARCHAR(10) NOT NULL DEFAULT 'album',
+    track_id VARCHAR(100),
+    track_title VARCHAR(150),
+    track_artist VARCHAR(150),
+    track_album VARCHAR(150),
+    track_cover_url VARCHAR(500),
     review_text TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
