@@ -187,23 +187,27 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
               Valoració de la comunitat
             </h2>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex items-center gap-4">
               <RatingStars value={averageRating} size="md" showNumber />
               <span className="text-xs text-slate-500">
                 {ratedComments.length} {ratedComments.length === 1 ? 'valoració' : 'valoracions'}
               </span>
             </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-semibold text-slate-400">
-              La teva valoració: {userComment?.rating ? `${Number(userComment.rating).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')} / 5` : 'encara no valorada'}
-            </span>
-            <RatingStars
-              value={Number(userComment?.rating) || 0}
-              size="md"
-              interactive
-              onChange={(rating) => handleOpenComment(userComment, rating)}
-            />
+          <div className="flex flex-col items-start gap-3">
+            {userComment?.rating ? (
+              <RatingStars value={Number(userComment.rating)} size="md" showNumber />
+            ) : (
+              <span className="text-xs font-semibold text-slate-400">Encara no has valorat aquesta cançó</span>
+            )}
+            <button
+              type="button"
+              onClick={() => handleOpenComment(userComment)}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-emerald-400"
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+              {userComment ? 'Editar valoració i comentari' : 'Valorar i comentar'}
+            </button>
           </div>
         </div>
 
@@ -214,14 +218,6 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
               {comments.length} {comments.length === 1 ? 'comentari' : 'comentaris'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => handleOpenComment()}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-emerald-400"
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-            {userComment?.review_text ? 'Editar el meu comentari' : 'Afegir comentari'}
-          </button>
         </div>
 
         {comments.length === 0 ? (
