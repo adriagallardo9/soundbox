@@ -1,10 +1,11 @@
 import React from 'react';
 import { Bookmark, Music } from 'lucide-react';
+import ArtistLink from './ArtistLink';
 import { useData } from '../context/DataContext';
 
 const DEFAULT_COVER = '/album-placeholder.svg';
 
-export default function AlbumCard({ album, onSelect }) {
+export default function AlbumCard({ album, onSelect, onNavigate }) {
   const { checkInListenlist, toggleListenlistAlbum, getAlbumStats } = useData();
 
   const inListenlist = checkInListenlist(album.id);
@@ -77,7 +78,7 @@ export default function AlbumCard({ album, onSelect }) {
             {album.title}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5 line-clamp-1" title={album.artist}>
-            {album.artist}
+            <ArtistLink name={album.artist} artistIds={album.artistIds} onNavigate={onNavigate} />
           </p>
         </div>
 

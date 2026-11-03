@@ -99,6 +99,7 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
           title="Discos en aquesta col·lecció"
           albums={playlist.albums.map(pa => pa.album)}
           onSelectAlbum={(id) => onNavigate('album', { albumId: id })}
+          onNavigate={onNavigate}
           emptyMessage="Encara no s'han afegit àlbums a aquesta llista. Navega pel cercador i prem 'Afegir a una llista' a la fitxa d'un àlbum!"
         />
       </section>

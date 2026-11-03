@@ -5,6 +5,7 @@ import { Disc3 } from 'lucide-react';
 export default function AlbumGrid({
   albums = [],
   onSelectAlbum,
+  onNavigate,
   title = null,
   subtitle = null,
   emptyMessage = "No s'han trobat àlbums disponibles.",
@@ -51,7 +52,7 @@ export default function AlbumGrid({
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
           {albums.map((album) => (
-            <AlbumCard key={album.id} album={album} onSelect={onSelectAlbum} />
+            <AlbumCard key={album.id} album={album} onSelect={onSelectAlbum} onNavigate={onNavigate} />
           ))}
         </div>
       )}

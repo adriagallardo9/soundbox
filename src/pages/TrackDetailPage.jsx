@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Disc3, Loader2, MessageSquarePlus, Pause, Play } from 'lucide-react';
 import SpotifyEmbedPlayer from '../components/SpotifyEmbedPlayer';
 import RatingStars from '../components/RatingStars';
+import ArtistLink from '../components/ArtistLink';
 import ReviewCard from '../components/ReviewCard';
 import ReviewModal from '../components/ReviewModal';
 import { playPreview, stopPreview, subscribeToPlayback } from '../services/audioPlayer';
@@ -160,7 +161,9 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
             <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
               {track.title}
             </h1>
-            <p className="mt-2 text-lg font-semibold text-slate-300">{track.artist}</p>
+            <p className="mt-2 text-lg font-semibold text-slate-300">
+              <ArtistLink name={track.artist} artistIds={track.artistIds} onNavigate={onNavigate} />
+            </p>
             {track.album && (
               <p className="mt-1 text-sm text-slate-400">{track.album}</p>
             )}
@@ -233,6 +236,7 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
                 key={comment.id}
                 review={comment}
                 onEdit={handleOpenComment}
+                onNavigate={onNavigate}
               />
             ))}
           </div>

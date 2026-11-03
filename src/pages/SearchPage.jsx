@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { getArtistDiscography, resolveTrackForPlayback, searchAll } from '../services/spotifyApi';
+import React, { useState, useEffect, useRef } from 'react';
+import { getArtistDetails, getArtistDiscography, resolveTrackForPlayback, searchAll } from '../services/spotifyApi';
 import { playPreview, stopPreview, subscribeToPlayback } from '../services/audioPlayer';
 import SpotifyEmbedPlayer from '../components/SpotifyEmbedPlayer';
+import ArtistLink from '../components/ArtistLink';
 import { useNotification } from '../context/NotificationContext';
 import {
   Search, Loader2, Sparkles, AlertTriangle, ArrowLeft,
@@ -116,7 +117,9 @@ function AlbumCard({ album, onNavigate }) {
         <p className="font-bold text-white text-sm truncate group-hover:text-emerald-400 transition-colors">
           {album.title}
         </p>
-        <p className="text-xs text-slate-400 truncate mt-0.5">{album.artist}</p>
+        <p className="text-xs text-slate-400 truncate mt-0.5">
+          <ArtistLink name={album.artist} artistIds={album.artistIds} onNavigate={onNavigate} />
+        </p>
 
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-xs text-slate-500">
           {album.release_year && <span>{album.release_year}</span>}
@@ -145,7 +148,7 @@ function AlbumCard({ album, onNavigate }) {
   );
 }
 
-function TrackRow({ track, index, onNavigate, onArtistClick, onPlaybackError }) {
+function TrackRow({ track, index, onNavigate, onPlaybackError }) {
   const [playing, setPlaying]           = useState(false);
   const [previewUrl, setPreviewUrl]     = useState(track.preview_url);
   const [fetchingPreview, setFetching]  = useState(false);
@@ -278,17 +281,14 @@ function TrackRow({ track, index, onNavigate, onArtistClick, onPlaybackError }) 
 
         {/* Artista clicable → discografia */}
         <div className="flex items-center gap-1 min-w-0">
-          <button
-            type="button"
-            title={`Veure discografia de ${track.artist}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onArtistClick && onArtistClick(track);
-            }}
-            className="text-xs text-slate-400 hover:text-emerald-400 hover:underline transition-colors truncate text-left"
-          >
-            {track.artist}
-          </button>
+          <span className="truncate text-xs text-slate-400">
+            <ArtistLink
+              name={track.artist}
+              artistIds={track.artistIds}
+              onNavigate={onNavigate}
+              className="text-xs"
+            />
+          </span>
           {track.album && (
             <span className="text-xs text-slate-600 truncate flex-shrink-0"> · {track.album}</span>
           )}
@@ -364,7 +364,7 @@ function TabBtn({ active, icon: Icon, label, count, onClick }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const CHIPS = ['Beatles', 'Thriller', 'Pink Floyd', 'Rosalía', 'Radiohead', 'Daft Punk', 'Bad Bunny', 'Taylor Swift'];
 
-export default function SearchPage({ initialQuery = '', onNavigate }) {
+export default function SearchPage({ initialQuery = '', initialArtist = null, onNavigate }) {
   const [query, setQuery] = useState(initialQuery || '');
   const [results, setResults] = useState({ artists: [], albums: [], tracks: [], isSpotify: false });
   const [loading, setLoading] = useState(false);
@@ -427,11 +427,52 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
   };
 
   useEffect(() => {
+    if (initialArtist) {
+      setQuery(initialArtist.name || '');
+      setHasSearched(true);
+      if (initialArtist.id) {
+        showArtistDiscography(initialArtist);
+        return;
+      }
+
+      const requestId = ++artistRequestId.current;
+      setSelectedArtist(initialArtist);
+      setArtistAlbums([]);
+      setArtistAlbumsError('');
+      setArtistAlbumsLoading(true);
+      searchAll(initialArtist.name || '')
+        .then((data) => {
+          if (artistRequestId.current !== requestId) return;
+          const artist = data.artists.find(
+            (item) => item.name.toLocaleLowerCase() === (initialArtist.name || '').toLocaleLowerCase(),
+          );
+          if (artist) {
+            showArtistDiscography(artist);
+          } else {
+            const localAlbums = data.albums.filter(
+              (album) => album.artist.toLocaleLowerCase() === (initialArtist.name || '').toLocaleLowerCase(),
+            );
+            setArtistAlbums(localAlbums);
+            setArtistAlbumsTotal(localAlbums.length);
+            setArtistAlbumsError(localAlbums.length ? '' : `No s'ha trobat la discografia de ${initialArtist.name}.`);
+            setArtistAlbumsLoading(false);
+          }
+        })
+        .catch((error) => {
+          console.error('[Spotify] No s’ha pogut cercar l’artista:', error);
+          if (artistRequestId.current === requestId) {
+            setArtistAlbumsError("No s'ha pogut carregar la discografia. Torna-ho a provar.");
+            setArtistAlbumsLoading(false);
+          }
+        });
+      return;
+    }
+
     const q = initialQuery || 'a';
     setQuery(initialQuery || '');
     doSearch(q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQuery]);
+  }, [initialQuery, initialArtist?.id, initialArtist?.name]);
 
   const handleSubmit = (e) => { e.preventDefault(); doSearch(); };
 
@@ -445,6 +486,18 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
     setArtistAlbumsError('');
     setArtistAlbumsMoreError('');
     setArtistAlbumsLoading(true);
+
+    if (artist.id && !artist.image) {
+      getArtistDetails(artist.id)
+        .then((details) => {
+          if (details && artistRequestId.current === requestId) {
+            setSelectedArtist((current) => current?.id === artist.id ? { ...current, ...details } : current);
+          }
+        })
+        .catch((error) => {
+          console.error('[Spotify] No s’ha pogut carregar la imatge de l’artista:', error);
+        });
+    }
 
     try {
       const discography = await getArtistDiscography(artist.id);
@@ -501,25 +554,6 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
     setArtistAlbumsLoadingMore(false);
     setArtistAlbumsMoreError('');
   };
-
-  // Quan es clica un artista des d'una fila de cançó (no des de la targeta d'artista)
-  // Construïm un objecte artista mínim i anem a la discografia
-  const handleArtistFromTrack = useCallback((track) => {
-    const artist = {
-      id:         track.artistIds?.[0] ?? null,
-      name:       track.artist.split(',')[0].trim(),
-      image:      null,
-      spotifyUrl: null,
-    };
-    if (!artist.id) {
-      // Si no tenim ID, fem una nova cerca per nom d'artista
-      setQuery(artist.name);
-      doSearch(artist.name);
-      return;
-    }
-    showArtistDiscography(artist);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const totalResults = results.artists.length + results.albums.length + results.tracks.length;
 
@@ -593,7 +627,7 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
             <section className="space-y-5">
               <button
                 type="button"
-                onClick={backToResults}
+                onClick={() => initialArtist ? onNavigate('search') : backToResults()}
                 className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-emerald-400 transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -603,7 +637,20 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
               <div className="flex items-center gap-4 p-5 rounded-2xl bg-slate-900/60 border border-slate-700/50">
                 <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-700 flex-shrink-0">
                   {selectedArtist.image && (
-                    <img src={selectedArtist.image} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={selectedArtist.image}
+                      alt={selectedArtist.name}
+                      className="w-full h-full object-cover"
+                      onError={(event) => {
+                        event.currentTarget.onerror = null;
+                        event.currentTarget.src = '/album-placeholder.svg';
+                      }}
+                    />
+                  )}
+                  {!selectedArtist.image && (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Mic2 className="h-10 w-10 text-slate-500" />
+                    </div>
                   )}
                 </div>
                 <div className="min-w-0">
@@ -759,7 +806,6 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
                       track={t}
                       index={i + 1}
                       onNavigate={onNavigate}
-                      onArtistClick={handleArtistFromTrack}
                       onPlaybackError={() => addToast('No s\'ha pogut reproduir aquesta previsualització.', 'error')}
                     />
                   ))}

@@ -53,6 +53,16 @@ function AppContent() {
             preview_url: params.get('preview_url') || null,
             spotifyUrl: params.get('spotifyUrl') || null,
             track_number: Number(params.get('track_number')) || null,
+            artistIds: params.get('artistIds')?.split(',').filter(Boolean) || [],
+          },
+        });
+      } else if (view === 'artist') {
+        const params = new URLSearchParams(hashQuery);
+        setCurrentView('artist');
+        setViewParams({
+          artist: {
+            id: params.get('id') || null,
+            name: params.get('name') || '',
           },
         });
       } else if (view === 'playlist' && rest[0]) {
@@ -87,14 +97,20 @@ function AppContent() {
     else if (view === 'track') {
       const track = params.track || {};
       const trackParams = new URLSearchParams();
-      ['title', 'artist', 'album', 'albumId', 'cover_url', 'duration', 'duration_ms', 'preview_url', 'spotifyUrl', 'track_number']
+      ['title', 'artist', 'album', 'albumId', 'cover_url', 'duration', 'duration_ms', 'preview_url', 'spotifyUrl', 'track_number', 'artistIds']
         .forEach((key) => {
           if (track[key] !== null && track[key] !== undefined && track[key] !== '') {
-            trackParams.set(key, track[key]);
+            trackParams.set(key, Array.isArray(track[key]) ? track[key].join(',') : track[key]);
           }
         });
       const trackId = track.id || track.title;
       window.location.hash = `#/track/${encodeURIComponent(trackId)}?${trackParams.toString()}`;
+    }
+    else if (view === 'artist') {
+      const artistParams = new URLSearchParams();
+      if (params.artist?.id) artistParams.set('id', params.artist.id);
+      if (params.artist?.name) artistParams.set('name', params.artist.name);
+      window.location.hash = `#/artist?${artistParams.toString()}`;
     }
     else if (view === 'playlist-detail') window.location.hash = `#/playlist/${params.playlistId}`;
     else if (view === 'profile') window.location.hash = params.userId ? `#/profile/${params.userId}` : '#/profile';
@@ -119,6 +135,13 @@ function AppContent() {
         {currentView === 'search' && (
           <SearchPage
             initialQuery={viewParams.query || ''}
+            onNavigate={navigateTo}
+          />
+        )}
+
+        {currentView === 'artist' && (
+          <SearchPage
+            initialArtist={viewParams.artist}
             onNavigate={navigateTo}
           />
         )}

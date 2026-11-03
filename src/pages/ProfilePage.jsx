@@ -212,6 +212,7 @@ export default function ProfilePage({ userId = null, onNavigate }) {
                     },
                   })}
                   onEdit={handleEditReview}
+                  onNavigate={onNavigate}
                 />
               ))}
             </div>
@@ -225,6 +226,7 @@ export default function ProfilePage({ userId = null, onNavigate }) {
           <AlbumGrid
             albums={listenlistItems.map(item => item.album)}
             onSelectAlbum={(albId) => onNavigate('album', { albumId: albId })}
+            onNavigate={onNavigate}
             emptyMessage="No tens cap àlbum a la teva llista d'Escoltar més tard. Afegeix-ne des de la cerca o fitxes d'àlbum!"
           />
         </div>

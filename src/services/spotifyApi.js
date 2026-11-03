@@ -122,6 +122,14 @@ export async function getArtistDiscography(artistId, offset = 0) {
   };
 }
 
+export async function getArtistDetails(artistId) {
+  const token = await getToken();
+  if (!token) throw new Error("No s'ha pogut obtenir un token de Spotify.");
+
+  const data = await spotifyGet(`/v1/artists/${encodeURIComponent(artistId)}`, token);
+  return parseArtists([data])[0] || null;
+}
+
 function normalizeText(value = '') {
   return value
     .normalize('NFD')
@@ -350,6 +358,7 @@ export async function getAlbumDetails(albumId, onFallbackNotice = null) {
         id:           item.id,
         title:        item.name,
         artist:       item.artists?.map((a) => a.name).join(', ') ?? 'Artista desconegut',
+        artistIds:    item.artists?.map((a) => a.id) ?? [],
         cover_url:    getBestImage(item.images) || cached?.cover_url || PLACEHOLDER_COVER,
         release_date: item.release_date,
         release_year: item.release_date ? parseInt(item.release_date, 10) : null,

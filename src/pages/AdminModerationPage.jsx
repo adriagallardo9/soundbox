@@ -116,6 +116,7 @@ export default function AdminModerationPage({ onNavigate }) {
                 review={rev}
                 showAlbum={true}
                 onSelectAlbum={(albId) => onNavigate('album', { albumId: albId })}
+                onNavigate={onNavigate}
               />
             ))}
           </div>

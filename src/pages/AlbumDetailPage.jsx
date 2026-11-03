@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getAlbumDetails, resolveTrackForPlayback } from '../services/spotifyApi';
 import { playPreview, stopPreview, subscribeToPlayback } from '../services/audioPlayer';
 import SpotifyEmbedPlayer from '../components/SpotifyEmbedPlayer';
+import ArtistLink from '../components/ArtistLink';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
@@ -257,7 +258,7 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
                 {album.title}
               </h1>
               <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">
-                {album.artist}
+                <ArtistLink name={album.artist} artistIds={album.artistIds} onNavigate={onNavigate} />
               </p>
 
               {album.description && (
@@ -428,6 +429,7 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
                           track: {
                             ...track,
                             artist: album.artist,
+                            artistIds: album.artistIds || [],
                             album: album.title,
                             albumId: album.id,
                             cover_url: album.cover_url,
@@ -495,6 +497,7 @@ export default function AlbumDetailPage({ albumId, onNavigate }) {
                   key={rev.id}
                   review={rev}
                   onEdit={() => handleOpenReview(rev)}
+                  onNavigate={onNavigate}
                 />
               ))
             )}

@@ -129,6 +129,7 @@ export default function HomePage({ onNavigate }) {
           subtitle="Els discos amb més puntuacions i aclamació de la comunitat SoundBoxd"
           albums={topRatedAlbums}
           onSelectAlbum={(albumId) => onNavigate('album', { albumId })}
+          onNavigate={onNavigate}
         />
       </section>
 
@@ -163,6 +164,7 @@ export default function HomePage({ onNavigate }) {
                   cover_url: review.track_cover_url,
                 },
               })}
+              onNavigate={onNavigate}
             />
           ))}
         </div>
