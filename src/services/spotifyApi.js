@@ -268,6 +268,23 @@ function parseTracks(items) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PREVIEW D'UNA CANÇÓ — Obté la preview_url sota demanda
+// Documentació: https://developer.spotify.com/documentation/web-api/reference/get-track
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getTrackPreview(trackId) {
+  if (!trackId) return null;
+  const token = await getToken();
+  if (!token) return null;
+  try {
+    const data = await spotifyGet(`/v1/tracks/${trackId}?market=ES`, token);
+    return data.preview_url ?? null;
+  } catch (err) {
+    console.warn('[Spotify] No s\'ha pogut obtenir preview per', trackId, err.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // COMPATIBILITAT — mantinguts per a AlbumDetailPage i altres components
 // ─────────────────────────────────────────────────────────────────────────────
 

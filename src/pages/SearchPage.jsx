@@ -1,11 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { getArtistDiscography, searchAll } from '../services/spotifyApi';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { getArtistDiscography, getTrackPreview, searchAll } from '../services/spotifyApi';
 import { useNotification } from '../context/NotificationContext';
 import {
   Search, Loader2, Sparkles, AlertTriangle, ArrowLeft,
-  Music, Mic2, Disc3, Play, ExternalLink,
-  Clock, Users, BarChart2, Radio,
+  Music, Mic2, Disc3, Play, Pause, ExternalLink,
+  Clock, Users, BarChart2, Volume2, VolumeX,
 } from 'lucide-react';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gestió global d'àudio — un sol reproductor actiu alhora
+// ─────────────────────────────────────────────────────────────────────────────
+const audioState = {
+  current: null,        // element <audio> actiu
+  setActive: null,      // setter de l'ID del track actiu
+};
+
+function stopAllAudio() {
+  if (audioState.current) {
+    audioState.current.pause();
+    audioState.current.currentTime = 0;
+    audioState.current = null;
+  }
+  if (audioState.setActive) {
+    audioState.setActive(null);
+    audioState.setActive = null;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
@@ -143,71 +163,125 @@ function AlbumCard({ album, onNavigate }) {
   );
 }
 
-function TrackRow({ track, index, onNavigate }) {
-  const [playing, setPlaying] = useState(false);
+// ID del track que s'està reproduint ara (compartit entre totes les files)
+let globalPlayingId = null;
+const playingListeners = new Set();
+function notifyPlayingChange(id) {
+  globalPlayingId = id;
+  playingListeners.forEach((fn) => fn(id));
+}
+
+function TrackRow({ track, index, onNavigate, onArtistClick }) {
+  const [playing, setPlaying]           = useState(false);
+  const [previewUrl, setPreviewUrl]     = useState(track.preview_url);
+  const [fetchingPreview, setFetching]  = useState(false);
+  const [noPreview, setNoPreview]       = useState(false);
   const audioRef = useRef(null);
 
-  const togglePreview = (e) => {
+  // Sincronitzar estat local amb el reproductor global
+  useEffect(() => {
+    const handler = (id) => {
+      if (id !== track.id && playing) {
+        setPlaying(false);
+        audioRef.current?.pause();
+      }
+    };
+    playingListeners.add(handler);
+    return () => {
+      playingListeners.delete(handler);
+      audioRef.current?.pause();
+    };
+  }, [track.id, playing]);
+
+  const handlePlay = async (e) => {
     e.stopPropagation();
-    if (!track.preview_url) return;
+    if (noPreview) return;
+
+    // Aturar si ja s'estava reproduint
     if (playing) {
       audioRef.current?.pause();
       setPlaying(false);
-    } else {
-      audioRef.current?.play();
-      setPlaying(true);
+      notifyPlayingChange(null);
+      return;
     }
+
+    // Obtenir preview URL si no la tenim
+    let url = previewUrl;
+    if (!url) {
+      setFetching(true);
+      url = await getTrackPreview(track.id);
+      setFetching(false);
+      if (!url) {
+        setNoPreview(true);
+        return;
+      }
+      setPreviewUrl(url);
+    }
+
+    // Aturar qualsevol altre track i reproduir aquest
+    notifyPlayingChange(track.id);
+    // Donem un tick perquè el nou src s'assigni al <audio>
+    setTimeout(() => {
+      audioRef.current?.play().catch(() => {});
+    }, 0);
+    setPlaying(true);
   };
 
-  useEffect(() => {
-    return () => audioRef.current?.pause();
-  }, []);
+  const btnClass = playing
+    ? 'bg-emerald-500 text-slate-950 scale-110'
+    : noPreview
+    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+    : 'bg-slate-700/70 text-slate-400 hover:bg-emerald-500 hover:text-slate-950 hover:scale-110 opacity-0 group-hover:opacity-100';
 
   return (
     <div
       className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 transition-all cursor-pointer"
       onClick={() => track.albumId && onNavigate && onNavigate('album', { albumId: track.albumId })}
     >
-      {/* Número / play preview */}
-      <div className="w-7 flex-shrink-0 flex items-center justify-center">
-        {track.preview_url ? (
-          <button
-            onClick={togglePreview}
-            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-              playing
-                ? 'bg-emerald-500 text-slate-950'
-                : 'bg-slate-700 text-slate-400 hover:bg-emerald-500 hover:text-slate-950 opacity-0 group-hover:opacity-100'
-            }`}
-          >
-            {playing ? (
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-            ) : (
-              <Play className="w-3 h-3 ml-0.5" />
-            )}
-          </button>
-        ) : (
-          <span className="text-xs text-slate-600 group-hover:hidden">{index}</span>
-        )}
-        {track.preview_url && (
+      {/* Play button — visible per a totes les cançons */}
+      <div className="w-7 flex-shrink-0 flex items-center justify-center relative">
+        <span className={`text-xs text-slate-600 transition-opacity ${
+          playing ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+        } absolute`}>
+          {index}
+        </span>
+        <button
+          title={noPreview ? 'Preview no disponible' : playing ? 'Atura' : 'Reproduir 30s'}
+          onClick={handlePlay}
+          disabled={fetchingPreview}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${btnClass}`}
+        >
+          {fetchingPreview ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : noPreview ? (
+            <VolumeX className="w-3 h-3" />
+          ) : playing ? (
+            <Pause className="w-3.5 h-3.5" />
+          ) : (
+            <Play className="w-3 h-3 ml-0.5" />
+          )}
+        </button>
+
+        {previewUrl && (
           <audio
             ref={audioRef}
-            src={track.preview_url}
-            onEnded={() => setPlaying(false)}
+            src={previewUrl}
+            onEnded={() => { setPlaying(false); notifyPlayingChange(null); }}
           />
         )}
       </div>
 
       {/* Portada mini */}
-      <div className="w-10 h-10 rounded-md overflow-hidden bg-slate-700 flex-shrink-0">
+      <div className="w-10 h-10 rounded-md overflow-hidden bg-slate-700 flex-shrink-0 shadow">
         <img
           src={track.cover_url || '/album-placeholder.svg'}
-          alt={track.album}
+          alt={track.album || track.title}
           className="w-full h-full object-cover"
           onError={(e) => { e.target.style.display = 'none'; }}
         />
       </div>
 
-      {/* Info */}
+      {/* Títol + artista */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="font-semibold text-white text-sm truncate group-hover:text-emerald-400 transition-colors">
@@ -219,20 +293,32 @@ function TrackRow({ track, index, onNavigate }) {
             </span>
           )}
         </div>
-        <p className="text-xs text-slate-400 truncate">
-          {track.artist}
+
+        {/* Artista clicable → discografia */}
+        <div className="flex items-center gap-1 min-w-0">
+          <button
+            type="button"
+            title={`Veure discografia de ${track.artist}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onArtistClick && onArtistClick(track);
+            }}
+            className="text-xs text-slate-400 hover:text-emerald-400 hover:underline transition-colors truncate text-left"
+          >
+            {track.artist}
+          </button>
           {track.album && (
-            <span className="text-slate-600"> · {track.album}</span>
+            <span className="text-xs text-slate-600 truncate flex-shrink-0"> · {track.album}</span>
           )}
-        </p>
+        </div>
       </div>
 
-      {/* Popularitat */}
+      {/* Barra de popularitat */}
       {track.popularity !== null && (
         <div className="hidden sm:flex flex-col items-center gap-0.5 flex-shrink-0 w-8">
           <div className="w-full bg-slate-700 rounded-full h-1">
             <div
-              className="bg-emerald-500 h-1 rounded-full"
+              className="bg-emerald-500 h-1 rounded-full transition-all"
               style={{ width: `${track.popularity}%` }}
             />
           </div>
@@ -240,16 +326,15 @@ function TrackRow({ track, index, onNavigate }) {
         </div>
       )}
 
-      {/* Durada */}
-      <div className="flex items-center gap-3 flex-shrink-0">
-        <span className="text-xs text-slate-500 hidden sm:block font-mono">
-          {track.duration}
-        </span>
+      {/* Durada + Spotify link */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <span className="text-xs text-slate-500 hidden sm:block font-mono">{track.duration}</span>
         {track.spotifyUrl && (
           <a
             href={track.spotifyUrl}
             target="_blank"
             rel="noopener noreferrer"
+            title="Obrir a Spotify"
             className="text-slate-600 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
@@ -429,6 +514,25 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
     setArtistAlbumsLoadingMore(false);
     setArtistAlbumsMoreError('');
   };
+
+  // Quan es clica un artista des d'una fila de cançó (no des de la targeta d'artista)
+  // Construïm un objecte artista mínim i anem a la discografia
+  const handleArtistFromTrack = useCallback((track) => {
+    const artist = {
+      id:         track.artistIds?.[0] ?? null,
+      name:       track.artist.split(',')[0].trim(),
+      image:      null,
+      spotifyUrl: null,
+    };
+    if (!artist.id) {
+      // Si no tenim ID, fem una nova cerca per nom d'artista
+      setQuery(artist.name);
+      doSearch(artist.name);
+      return;
+    }
+    showArtistDiscography(artist);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalResults = results.artists.length + results.albums.length + results.tracks.length;
 
@@ -668,6 +772,7 @@ export default function SearchPage({ initialQuery = '', onNavigate }) {
                       track={t}
                       index={i + 1}
                       onNavigate={onNavigate}
+                      onArtistClick={handleArtistFromTrack}
                     />
                   ))}
                 </div>
