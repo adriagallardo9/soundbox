@@ -19,7 +19,7 @@
 | Codi | Funcionalitat | Descripció | Estat |
 | :--- | :--- | :--- | :---: |
 | **RF-01** | **Registre d'usuari** | Formulari de registre amb nom d'usuari, nom complet, correu i contrasenya. Creació automàtica i inici de sessió immediat. | ✅ Completat |
-| **RF-02** | **Inici de sessió** | Autenticació amb correu i contrasenya, gestió d'estat de sessió i selector d'usuaris per a proves ràpides. | ✅ Completat |
+| **RF-02** | **Inici de sessió** | Autenticació amb correu i contrasenya o amb Google OAuth, gestió d'estat de sessió i selector d'usuaris per a proves ràpides. | ✅ Completat |
 | **RF-03** | **Cerca d'àlbums i cançons** | Integració amb l'API de Spotify (cerca per títol, artista o any) amb fallback automàtic al catàleg local (**Pla B**). | ✅ Completat |
 | **RF-04** | **Consultar fitxa d'àlbum** | Fitxa detallada amb portada d'alta resolució, llista de temes (tracklist), fragments d'àudio de 30s, nota mitjana i ressenyes. | ✅ Completat |
 | **RF-05** | **Puntuar i ressenyar** | Modal interactiu amb selector d'estrelles (1 a 5) i camp de ressenya amb comptador (fins a 2000 caràcters) i validacions. | ✅ Completat |
@@ -115,6 +115,19 @@ npm run dev
 ```
 L'aplicació s'obrirà a `http://localhost:3000/`.
 
+### Inici de sessió amb Google
+
+Per habilitar l'inici de sessió amb Google:
+1. A Google Cloud Console, crea un **OAuth 2.0 Client ID** de tipus **Aplicació web**.
+2. Afegeix `http://localhost:3000` als **orígens JavaScript autoritzats**. Per a producció, afegeix-hi també el domini publicat de SoundBox.
+3. Desa el Client ID a `.env.local` (a l'arrel del projecte):
+   ```env
+   VITE_GOOGLE_CLIENT_ID=el_teu_client_id.apps.googleusercontent.com
+   ```
+4. Reinicia `npm run dev`. Per desplegar, configura la mateixa variable a l'entorn de compilació abans d'executar `npm run deploy:cloudflare`.
+
+El Client ID és públic i s'incorpora al bundle del navegador; no hi posis cap client secret. Els comptes i la sessió es desen al navegador, com la resta de dades d'aquesta versió de SoundBox.
+
 ### 3. Compilar per a Producció
 ```bash
 npm run build
@@ -138,8 +151,10 @@ npx wrangler secret put SPOTIFY_CLIENT_ID
 npx wrangler secret put SPOTIFY_CLIENT_SECRET
 ```
 
-Per desplegar automàticament cada canvi publicat a `main`, afegeix `CLOUDFLARE_API_TOKEN`
-i `CLOUDFLARE_ACCOUNT_ID` com a secrets del repositori GitHub. La primera publicació
+Per desplegar automàticament cada canvi publicat a `main`, afegeix els secrets
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` i `VITE_GOOGLE_CLIENT_ID` al repositori GitHub.
+El domini de Cloudflare publicat també ha d'estar afegit als orígens JavaScript autoritzats
+del client OAuth de Google. La primera publicació
 crea o actualitza el Worker `soundbox`; després de configurar aquests secrets, la pipeline
 de GitHub Actions publicarà automàticament els canvis a l'adreça del Worker.
 

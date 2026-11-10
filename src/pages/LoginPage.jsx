@@ -31,6 +31,7 @@ function GoogleIcon() {
 export default function LoginPage({ onNavigate }) {
   const { login, loginGoogle } = useAuth();
   const { addToast } = useNotification();
+  const googleClientConfigured = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -134,7 +135,13 @@ export default function LoginPage({ onNavigate }) {
         {/* Botó Google OAuth */}
         <button
           type="button"
-          onClick={() => handleGoogleLogin()}
+          onClick={() => {
+            if (!googleClientConfigured) {
+              setError('Configura VITE_GOOGLE_CLIENT_ID per habilitar l’inici de sessió amb Google.');
+              return;
+            }
+            handleGoogleLogin();
+          }}
           disabled={googleLoading}
           className="w-full flex items-center justify-center gap-2.5 py-2.5 mb-5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl text-sm transition-all border border-gray-200 shadow-sm disabled:opacity-60"
         >
