@@ -4,6 +4,7 @@ import {
   getCurrentUser,
   setCurrentUser as persistCurrentUser,
   loginUser,
+  loginWithGoogle,
   registerUser,
   logoutUser,
   getUsers
@@ -18,7 +19,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     initDatabase();
-    const user = getCurrentUser();
+    const user = getCurrentUser(); // Comprova si la sessió és vàlida (no caducada)
     setCurrentUserState(user);
     setAvailableUsers(getUsers());
     setLoading(false);
@@ -32,6 +33,13 @@ export function AuthProvider({ children }) {
     const user = loginUser(credentials);
     setCurrentUserState(user);
     return user;
+  };
+
+  const loginGoogle = (googleUserData) => {
+    const { user, isNew } = loginWithGoogle(googleUserData);
+    setCurrentUserState(user);
+    refreshUsers();
+    return { user, isNew };
   };
 
   const register = (data) => {
@@ -66,6 +74,7 @@ export function AuthProvider({ children }) {
         loading,
         availableUsers,
         login,
+        loginGoogle,
         register,
         logout,
         switchUser,

@@ -15,8 +15,43 @@ const KEYS = {
   PLAYLISTS: 'soundboxd_playlists_v1',
   PLAYLIST_ALBUMS: 'soundboxd_playlist_albums_v1',
   LISTENLIST: 'soundboxd_listenlist_v1',
-  CURRENT_USER: 'soundboxd_current_user_v1'
+  CURRENT_USER: 'soundboxd_current_user_v1',
+  SESSION: 'soundboxd_session_v1'
 };
+
+// Sessió de 2 setmanes en mil·lisegons
+const SESSION_DURATION_MS = 14 * 24 * 60 * 60 * 1000;
+
+// ---- Gestió de sessió amb expiració ----
+export function saveSession(user) {
+  const session = {
+    user,
+    expiresAt: Date.now() + SESSION_DURATION_MS
+  };
+  setItem(KEYS.SESSION, session);
+  setItem(KEYS.CURRENT_USER, user);
+}
+
+export function getSession() {
+  try {
+    const session = getItem(KEYS.SESSION, null);
+    if (!session) return null;
+    if (Date.now() > session.expiresAt) {
+      // Sessió caducada → netejar
+      localStorage.removeItem(KEYS.SESSION);
+      localStorage.removeItem(KEYS.CURRENT_USER);
+      return null;
+    }
+    return session.user;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSession() {
+  localStorage.removeItem(KEYS.SESSION);
+  localStorage.removeItem(KEYS.CURRENT_USER);
+}
 
 function getItem(key, defaultValue) {
   try {
@@ -78,14 +113,14 @@ export function getUsers() {
 }
 
 export function getCurrentUser() {
-  return getItem(KEYS.CURRENT_USER, null);
+  return getSession();
 }
 
 export function setCurrentUser(user) {
-  setItem(KEYS.CURRENT_USER, user);
+  saveSession(user);
 }
 
-export function registerUser({ username, email, password, name = '' }) {
+export function registerUser({ username, email, password, name = '', googleId = null, avatar = null }) {
   const users = getUsers();
   if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     throw new Error('Aquest nom d\'usuari ja està en ús.');
@@ -99,16 +134,17 @@ export function registerUser({ username, email, password, name = '' }) {
     username: username.trim(),
     name: name.trim() || username.trim(),
     email: email.trim().toLowerCase(),
-    password, // En producció s'utilitzaria bcrypt
+    password: googleId ? null : password, // Google users no guarden contrasenya
+    googleId: googleId || null,
     role: 'user',
-    avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}`,
+    avatar: avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}`,
     bio: 'Nou membre apassionat per la música a SoundBoxd.',
     created_at: new Date().toISOString()
   };
 
   users.push(newUser);
   setItem(KEYS.USERS, users);
-  setCurrentUser(newUser);
+  saveSession(newUser);
   return newUser;
 }
 
@@ -118,12 +154,57 @@ export function loginUser({ email, password }) {
   if (!user) {
     throw new Error('Credencials incorrectes. Comprova el correu o contrasenya.');
   }
-  setCurrentUser(user);
+  saveSession(user);
   return user;
 }
 
+export function loginWithGoogle({ googleId, email, name, avatar }) {
+  const users = getUsers();
+  // Buscar usuari existent per Google ID o email
+  let user = users.find(u => u.googleId === googleId || u.email.toLowerCase() === email.toLowerCase());
+
+  if (user) {
+    // Actualitzar dades de Google si cal
+    if (!user.googleId) {
+      user.googleId = googleId;
+      user.avatar = avatar || user.avatar;
+      const index = users.findIndex(u => u.id === user.id);
+      users[index] = user;
+      setItem(KEYS.USERS, users);
+    }
+    saveSession(user);
+    return { user, isNew: false };
+  }
+
+  // Usuari nou via Google → crear compte automàticament
+  const username = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+  let finalUsername = username;
+  let counter = 1;
+  while (users.some(u => u.username.toLowerCase() === finalUsername.toLowerCase())) {
+    finalUsername = `${username}${counter++}`;
+  }
+
+  const newUser = {
+    id: Date.now(),
+    username: finalUsername,
+    name: name || finalUsername,
+    email: email.toLowerCase(),
+    password: null,
+    googleId,
+    role: 'user',
+    avatar: avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(finalUsername)}`,
+    bio: 'Nou membre apassionat per la música a SoundBoxd.',
+    created_at: new Date().toISOString()
+  };
+
+  users.push(newUser);
+  setItem(KEYS.USERS, users);
+  saveSession(newUser);
+  return { user: newUser, isNew: true };
+}
+
 export function logoutUser() {
-  localStorage.removeItem(KEYS.CURRENT_USER);
+  clearSession();
 }
 
 // ----------------- ALBUMS -----------------
