@@ -37,6 +37,14 @@ import {
 
 const DataContext = createContext();
 
+function ownsSharedPlaylist(user, playlist) {
+  return Boolean(user && (
+    playlist.owner_google_id === user.sub
+    || playlist.owner_google_id === user.googleSub
+    || Number(playlist.user_id) === Number(user.accountId)
+  ));
+}
+
 export function DataProvider({ children }) {
   const { currentUser, cloudUser } = useAuth();
   const { addToast } = useNotification();
@@ -72,7 +80,7 @@ export function DataProvider({ children }) {
   useEffect(() => {
     if (
       !cloudUser?.sub
-      || currentUser?.googleId !== cloudUser.sub
+      || Number(currentUser?.cloudAccountId) !== Number(cloudUser.accountId)
       || sharedPlaylistsLoading
       || importedUsers.current.has(cloudUser.sub)
     ) return;
@@ -226,8 +234,11 @@ export function DataProvider({ children }) {
     }
     try {
       if (isPublic) {
-        if (!cloudUser?.sub || cloudUser.sub !== currentUser.googleId) {
-          throw new Error('Inicia sessió amb Google per compartir una llista pública.');
+        if (
+          !cloudUser?.sub
+          || Number(currentUser.cloudAccountId) !== Number(cloudUser.accountId)
+        ) {
+          throw new Error('Inicia sessió amb el teu compte per compartir una llista pública.');
         }
         const { playlist } = await createSharedPlaylist({ title, description, tracks, albums: [] });
         setSharedPlaylists((current) => [playlist, ...current.filter((item) => item.id !== playlist.id)]);
@@ -256,7 +267,7 @@ export function DataProvider({ children }) {
     try {
       const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
       if (sharedPlaylist) {
-        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+        if (!ownsSharedPlaylist(cloudUser, sharedPlaylist)) {
           throw new Error('Només la persona propietària pot modificar aquesta llista.');
         }
         const albums = sharedPlaylist.albums.map((item) => item.album || item);
@@ -282,7 +293,7 @@ export function DataProvider({ children }) {
     try {
       const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
       if (sharedPlaylist) {
-        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+        if (!ownsSharedPlaylist(cloudUser, sharedPlaylist)) {
           throw new Error('Només la persona propietària pot modificar aquesta llista.');
         }
         const albums = sharedPlaylist.albums
@@ -312,7 +323,7 @@ export function DataProvider({ children }) {
     try {
       const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
       if (sharedPlaylist) {
-        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+        if (!ownsSharedPlaylist(cloudUser, sharedPlaylist)) {
           throw new Error('Només la persona propietària pot modificar aquesta llista.');
         }
         if (sharedPlaylist.tracks.some((existing) => tracksMatch(existing, track))) {
@@ -346,7 +357,7 @@ export function DataProvider({ children }) {
     try {
       const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
       if (sharedPlaylist) {
-        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+        if (!ownsSharedPlaylist(cloudUser, sharedPlaylist)) {
           throw new Error('Només la persona propietària pot modificar aquesta llista.');
         }
         const tracks = sharedPlaylist.tracks.filter((existing) => !tracksMatch(existing, track));
@@ -373,7 +384,7 @@ export function DataProvider({ children }) {
     try {
       if (sharedPlaylists.some((item) => String(item.id) === String(playlistId))) {
         const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
-        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+        if (!ownsSharedPlaylist(cloudUser, sharedPlaylist)) {
           throw new Error('Només la persona propietària pot eliminar aquesta llista.');
         }
         await deleteSharedPlaylist(playlistId);

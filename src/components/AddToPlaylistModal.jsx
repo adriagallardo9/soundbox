@@ -9,13 +9,17 @@ export default function AddToPlaylistModal({
   album,
   onCreateNewPlaylist
 }) {
-  const { currentUser } = useAuth();
+  const { currentUser, cloudUser } = useAuth();
   const { addAlbumToUserPlaylist, allPlaylists } = useData();
 
   if (!isOpen || !currentUser) return null;
 
   const playlists = allPlaylists.filter((playlist) => (
-    playlist.user_id === currentUser.id || playlist.owner_google_id === currentUser.googleId
+    playlist.user_id === currentUser.id
+    || Number(playlist.user_id) === Number(currentUser.cloudAccountId)
+    || playlist.owner_google_id === currentUser.googleId
+    || playlist.owner_google_id === cloudUser?.sub
+    || playlist.owner_google_id === cloudUser?.googleSub
   ));
 
   const handleAdd = async (playlistId) => {

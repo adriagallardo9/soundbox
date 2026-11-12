@@ -16,7 +16,9 @@ async function request(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(result.error || 'No s’ha pogut completar l’operació.');
+    const error = new Error(result.error || 'No s’ha pogut completar l’operació.');
+    error.status = response.status;
+    throw error;
   }
   return result;
 }
@@ -25,6 +27,27 @@ export function establishGoogleSession(accessToken) {
   return request('/api/auth/google', {
     method: 'POST',
     body: JSON.stringify({ accessToken }),
+  });
+}
+
+export function loginCloudAccount(credentials) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function registerCloudAccount(account) {
+  return request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(account),
+  });
+}
+
+export function migrateLegacyAccount(account) {
+  return request('/api/auth/migrate', {
+    method: 'POST',
+    body: JSON.stringify(account),
   });
 }
 

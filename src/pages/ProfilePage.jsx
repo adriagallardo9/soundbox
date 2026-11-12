@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function ProfilePage({ userId = null, onNavigate }) {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, cloudUser, isAdmin } = useAuth();
   const { dataVersion, allPlaylists, removePlaylist } = useData();
 
   // If userId is provided, view that user, otherwise current user
@@ -39,7 +39,12 @@ export default function ProfilePage({ userId = null, onNavigate }) {
   const listenlistItems = getListenlist(effectiveUserId);
   const userPlaylists = allPlaylists.filter((playlist) => (
     playlist.user_id === effectiveUserId
-    || (isOwnProfile && playlist.owner_google_id && playlist.owner_google_id === currentUser?.googleId)
+    || (isOwnProfile && (
+      Number(playlist.user_id) === Number(currentUser?.cloudAccountId)
+      || playlist.owner_google_id === currentUser?.googleId
+      || playlist.owner_google_id === cloudUser?.sub
+      || playlist.owner_google_id === cloudUser?.googleSub
+    ))
   ));
 
   const displayUser = isOwnProfile && currentUser

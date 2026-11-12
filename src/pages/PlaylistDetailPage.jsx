@@ -109,7 +109,11 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
     : null;
   const isShared = Boolean(sharedPlaylist);
   const isOwner = isShared
-    ? cloudUser?.sub === playlist.owner_google_id
+    ? Boolean(cloudUser && (
+      cloudUser.sub === playlist.owner_google_id
+      || cloudUser.googleSub === playlist.owner_google_id
+      || Number(cloudUser.accountId) === Number(playlist.user_id)
+    ))
     : currentUser?.id === playlist?.user_id;
   const canManage = isShared ? isOwner : isOwner || isAdmin;
 

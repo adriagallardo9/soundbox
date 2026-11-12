@@ -129,15 +129,15 @@ Per habilitar l'inici de sessió amb Google:
 
 El Client ID és públic i s'incorpora al bundle del navegador; no hi posis cap client secret.
 
-### Llistes públiques compartides (Cloudflare D1)
+### Comptes i llistes públiques compartides (Cloudflare D1)
 
-Les llistes públiques, les valoracions i les visites necessiten D1 i una sessió Google validada pel Worker. Les visites compten una visita per navegador i dia; cada compte Google pot tenir una valoració editable per llista.
+Els comptes de correu/contrasenya i Google s'autentiquen al Worker; les contrasenyes es desen a D1 amb hash PBKDF2 i les sessions utilitzen una cookie `HttpOnly`. Les llistes públiques, les valoracions i les visites també necessiten D1. Cada compte de SoundBox pot tenir una valoració editable per llista; les visites compten una visita per navegador i dia.
 
 1. Crea la base de dades i substitueix `REPLACE_WITH_D1_DATABASE_ID` a `wrangler.jsonc` per l'identificador retornat:
    ```bash
    npx wrangler d1 create soundbox-shared
    ```
-2. Aplica la migració a D1:
+2. Aplica totes les migracions a D1 (la migració 0003 crea els comptes del servidor i prepara els comptes demo):
    ```bash
    npm run db:migrate:remote
    ```
@@ -150,6 +150,8 @@ Les llistes públiques, les valoracions i les visites necessiten D1 i una sessi�
    ```bash
    npm run deploy:cloudflare
    ```
+
+Els comptes locals existents es poden migrar quan iniciïn sessió des del mateix navegador amb les credencials que ja tenien desades. Després de migrar-los, també podran valorar les llistes públiques des d'altres dispositius amb el mateix correu i contrasenya. Si la sessió local no té les credencials desades, caldrà tornar a iniciar sessió o crear un compte nou.
 
 Per provar-ho localment, aplica primer les migracions a D1 local (`npm run db:migrate:local`), genera `dist` amb `npm run build`, inicia `npm run dev:worker` en un terminal i `npm run dev` en un altre. Les variables de desenvolupament del Worker poden anar a `.dev.vars` (fitxer ignorat per Git); no hi desis secrets al repositori.
 

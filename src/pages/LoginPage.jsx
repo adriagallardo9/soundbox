@@ -39,13 +39,13 @@ export default function LoginPage({ onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     try {
       setLoading(true);
-      login({ email: email.trim(), password });
+      await login({ email: email.trim(), password });
       addToast('Sessió iniciada correctament!', 'success');
       onNavigate('home');
     } catch (err) {
@@ -55,9 +55,9 @@ export default function LoginPage({ onNavigate }) {
     }
   };
 
-  const handleQuickLogin = (demoEmail, demoPassword) => {
+  const handleQuickLogin = async (demoEmail, demoPassword) => {
     try {
-      login({ email: demoEmail, password: demoPassword });
+      await login({ email: demoEmail, password: demoPassword });
       addToast('Sessió demo iniciada!', 'success');
       onNavigate('home');
     } catch (err) {

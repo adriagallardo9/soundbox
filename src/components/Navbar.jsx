@@ -23,6 +23,9 @@ export default function Navbar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const switchableUsers = availableUsers.filter((user) => (
+    user.password || user.id === currentUser?.id
+  ));
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -123,7 +126,7 @@ export default function Navbar({
                 aria-label="Selector ràpid d'usuari demo"
               >
                 <option value="" disabled>Canvia usuari demo</option>
-                {availableUsers.map(u => (
+                {switchableUsers.map(u => (
                   <option key={u.id} value={u.id}>
                     {u.name} ({u.role === 'admin' ? '🛡️ Admin' : '👤 Usuari'})
                   </option>
@@ -263,7 +266,7 @@ export default function Navbar({
                     onChange={(e) => switchUser(Number(e.target.value))}
                     className="bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-xl px-2.5 py-2"
                   >
-                    {availableUsers.map(u => (
+                    {switchableUsers.map(u => (
                       <option key={u.id} value={u.id}>
                         {u.name} ({u.role})
                       </option>

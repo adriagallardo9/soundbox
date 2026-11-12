@@ -26,7 +26,7 @@ export default function AddTrackToPlaylistModal({
   playlistId = null,
   existingTracks = [],
 }) {
-  const { currentUser } = useAuth();
+  const { currentUser, cloudUser } = useAuth();
   const { allAlbums, allPlaylists, addTrackToUserPlaylist } = useData();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -37,7 +37,11 @@ export default function AddTrackToPlaylistModal({
   if (!isOpen || !currentUser) return null;
 
   const playlists = allPlaylists.filter((playlist) => (
-    playlist.user_id === currentUser.id || playlist.owner_google_id === currentUser.googleId
+    playlist.user_id === currentUser.id
+    || Number(playlist.user_id) === Number(currentUser.cloudAccountId)
+    || playlist.owner_google_id === currentUser.googleId
+    || playlist.owner_google_id === cloudUser?.sub
+    || playlist.owner_google_id === cloudUser?.googleSub
   ));
   const targetPlaylist = playlistId == null
     ? null

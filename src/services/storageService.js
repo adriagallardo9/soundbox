@@ -203,6 +203,37 @@ export function loginWithGoogle({ googleId, email, name, avatar }) {
   return { user: newUser, isNew: true };
 }
 
+export function syncAccountUser(account) {
+  const users = getUsers();
+  const accountId = Number(account.accountId || account.id);
+  const existingIndex = users.findIndex((user) => (
+    Number(user.cloudAccountId) === accountId
+    || user.googleId === account.googleSub
+    || user.email?.toLowerCase() === account.email?.toLowerCase()
+  ));
+  const existing = existingIndex >= 0 ? users[existingIndex] : null;
+  const user = {
+    ...(existing || {}),
+    id: existing?.id ?? accountId,
+    cloudAccountId: accountId,
+    username: account.username || existing?.username,
+    name: existing?.name || account.name,
+    email: account.email,
+    password: existing?.id <= 10 ? existing.password : null,
+    googleId: account.googleSub || existing?.googleId || null,
+    role: account.role || 'user',
+    avatar: account.picture || existing?.avatar || null,
+    bio: existing?.bio || account.bio || '',
+    created_at: existing?.created_at || account.created_at || new Date().toISOString(),
+  };
+
+  if (existingIndex >= 0) users[existingIndex] = user;
+  else users.push(user);
+  setItem(KEYS.USERS, users);
+  saveSession(user);
+  return { user, isNew: !existing };
+}
+
 export function logoutUser() {
   clearSession();
 }

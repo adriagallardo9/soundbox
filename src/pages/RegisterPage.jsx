@@ -28,7 +28,7 @@ export default function RegisterPage({ onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -44,7 +44,7 @@ export default function RegisterPage({ onNavigate }) {
 
     try {
       setLoading(true);
-      register({
+      await register({
         username: username.trim(),
         name: name.trim() || username.trim(),
         email: email.trim(),

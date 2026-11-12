@@ -5,18 +5,36 @@ import {
   getCurrentUser,
   setCurrentUser as persistCurrentUser,
   loginUser,
-  loginWithGoogle,
-  registerUser,
   logoutUser,
-  getUsers
+  getUsers,
+  syncAccountUser
 } from '../services/storageService';
 import {
   clearCloudSession,
   establishGoogleSession,
-  getCloudSession
+  getCloudSession,
+  loginCloudAccount,
+  migrateLegacyAccount,
+  registerCloudAccount
 } from '../services/sharedPlaylistService';
 
 const AuthContext = createContext();
+
+async function authenticateStoredUser(user) {
+  const credentials = { email: user.email, password: user.password };
+  try {
+    return await loginCloudAccount(credentials);
+  } catch (error) {
+    if (error.status !== 401 || !user.username) throw error;
+
+    const verifiedLocalUser = loginUser(credentials);
+    return migrateLegacyAccount({
+      ...credentials,
+      username: verifiedLocalUser.username,
+      name: verifiedLocalUser.name,
+    });
+  }
+}
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUserState] = useState(null);
@@ -45,32 +63,45 @@ export function AuthProvider({ children }) {
       .then(async ({ user: sessionUser }) => {
         if (requestId !== cloudAuthRequest.current) return;
         if (sessionUser) {
-          const matchesLocalUser = user && (user.googleId
-            ? user.googleId === sessionUser.sub
-            : user.email?.toLowerCase() === sessionUser.email?.toLowerCase());
+          const matchesLocalUser = user
+            && user.email?.toLowerCase() === sessionUser.email?.toLowerCase();
           if (user && !matchesLocalUser) {
             await clearCloudSession();
-            if (user.googleId && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+            if (user.password) {
+              const { user: account } = await authenticateStoredUser(user);
+              if (requestId !== cloudAuthRequest.current) return;
+              const synced = syncAccountUser(account).user;
+              setCurrentUserState(synced);
+              setAvailableUsers(getUsers());
+              setCloudUser(account);
+              setCloudAuthError('');
+              setCloudAuthReady(true);
+            } else if (user.googleId && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
               expectedGoogleId.current = user.googleId;
               setSilentGoogleUser(user);
             } else {
-              setCloudAuthError('La sessió Google activa no correspon a l’usuari actual.');
+              setCloudAuthError('La sessió activa no correspon a l’usuari actual.');
               setCloudAuthReady(true);
             }
             return;
           }
+          const synced = syncAccountUser(sessionUser).user;
+          setCurrentUserState(synced);
+          setAvailableUsers(getUsers());
           setCloudUser(sessionUser);
           setCloudAuthError('');
-          if (!user || !user.googleId) {
-            const restored = loginWithGoogle({
-              googleId: sessionUser.sub,
-              email: sessionUser.email,
-              name: sessionUser.name,
-              avatar: sessionUser.picture
-            });
-            setCurrentUserState(restored.user);
-            setAvailableUsers(getUsers());
-          }
+          setCloudAuthReady(true);
+          return;
+        }
+
+        if (user?.password) {
+          const { user: account } = await authenticateStoredUser(user);
+          if (requestId !== cloudAuthRequest.current) return;
+          const synced = syncAccountUser(account).user;
+          setCurrentUserState(synced);
+          setAvailableUsers(getUsers());
+          setCloudUser(account);
+          setCloudAuthError('');
           setCloudAuthReady(true);
           return;
         }
@@ -84,10 +115,10 @@ export function AuthProvider({ children }) {
         setCloudUser(null);
         setCloudAuthReady(true);
       })
-      .catch(() => {
+      .catch((error) => {
         if (requestId !== cloudAuthRequest.current) return;
         setCloudUser(null);
-        setCloudAuthError('No s’ha pogut comprovar la sessió de Google.');
+        setCloudAuthError(error.message || 'No s’ha pogut comprovar la sessió.');
         setCloudAuthReady(true);
       })
       .finally(() => {
@@ -139,7 +170,13 @@ export function AuthProvider({ children }) {
             }
 
             const { user: sessionUser } = await establishGoogleSession(tokenResponse.access_token);
+            if (sessionUser.googleSub !== silentGoogleUser.googleId) {
+              throw new Error('El compte de Google actiu no coincideix amb l’usuari de SoundBox.');
+            }
             if (requestId === cloudAuthRequest.current) {
+              const synced = syncAccountUser(sessionUser).user;
+              setCurrentUserState(synced);
+              setAvailableUsers(getUsers());
               setCloudUser(sessionUser);
               setCloudAuthError('');
               setSilentGoogleUser(null);
@@ -149,7 +186,7 @@ export function AuthProvider({ children }) {
             finish(error.message);
           }
         },
-        error_callback: () => finish('Cal tornar a confirmar la sessió de Google per valorar llistes.'),
+        error_callback: () => finish('Cal tornar a iniciar sessió per valorar llistes.'),
       });
       tokenClient.requestAccessToken({ prompt: 'none', hint: silentGoogleUser.email });
     } catch (error) {
@@ -162,17 +199,41 @@ export function AuthProvider({ children }) {
     setAvailableUsers(getUsers());
   };
 
-  const login = (credentials) => {
-    cloudAuthRequest.current += 1;
+  const login = async (credentials) => {
+    const requestId = ++cloudAuthRequest.current;
     setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
-    setCloudAuthReady(true);
-    clearCloudSession().catch((error) => {
-      console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
-    });
-    const user = loginUser(credentials);
+    setCloudAuthReady(false);
+    let response;
+    try {
+      try {
+        response = await loginCloudAccount(credentials);
+      } catch (error) {
+        if (error.status !== 401) throw error;
+        const legacyUser = loginUser(credentials);
+        response = await migrateLegacyAccount({
+          ...credentials,
+          username: legacyUser.username,
+          name: legacyUser.name,
+        });
+      }
+    } catch (error) {
+      if (requestId === cloudAuthRequest.current) {
+        setCloudUser(null);
+        setCloudAuthError(error.message);
+        setCloudAuthReady(true);
+      }
+      throw error;
+    }
+
+    if (requestId !== cloudAuthRequest.current) return null;
+    const user = syncAccountUser(response.user).user;
     setCurrentUserState(user);
+    setAvailableUsers(getUsers());
+    setCloudUser(response.user);
+    setCloudAuthError('');
+    setCloudAuthReady(true);
     return user;
   };
 
@@ -181,43 +242,54 @@ export function AuthProvider({ children }) {
     setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
-    let cloudError = null;
+    setCloudAuthReady(false);
     try {
       await clearCloudSession();
       const { user: sessionUser } = await establishGoogleSession(accessToken);
-      if (requestId === cloudAuthRequest.current) {
-        setCloudUser(sessionUser);
-        setCloudAuthError('');
+      if (requestId !== cloudAuthRequest.current) return null;
+      if (sessionUser.googleSub !== googleUserData.googleId) {
+        throw new Error('El compte de Google no coincideix amb el perfil verificat.');
       }
+      const { user, isNew } = syncAccountUser(sessionUser);
+      setCurrentUserState(user);
+      setAvailableUsers(getUsers());
+      setCloudUser(sessionUser);
+      setCloudAuthError('');
+      setCloudAuthReady(true);
+      return { user, isNew, cloudError: null };
     } catch (error) {
-      cloudError = error;
       if (requestId === cloudAuthRequest.current) {
         setCloudUser(null);
         setCloudAuthError(error.message);
+        setCloudAuthReady(true);
       }
-    } finally {
-      if (requestId === cloudAuthRequest.current) setCloudAuthReady(true);
+      throw error;
     }
-
-    const { user, isNew } = loginWithGoogle(googleUserData);
-    setCurrentUserState(user);
-    refreshUsers();
-    return { user, isNew, cloudError };
   };
 
-  const register = (data) => {
-    cloudAuthRequest.current += 1;
+  const register = async (data) => {
+    const requestId = ++cloudAuthRequest.current;
     setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
-    setCloudAuthReady(true);
-    clearCloudSession().catch((error) => {
-      console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
-    });
-    const user = registerUser(data);
-    setCurrentUserState(user);
-    refreshUsers();
-    return user;
+    setCloudAuthReady(false);
+    try {
+      const { user: account } = await registerCloudAccount(data);
+      if (requestId !== cloudAuthRequest.current) return null;
+      const { user } = syncAccountUser(account);
+      setCurrentUserState(user);
+      setAvailableUsers(getUsers());
+      setCloudUser(account);
+      setCloudAuthError('');
+      setCloudAuthReady(true);
+      return user;
+    } catch (error) {
+      if (requestId === cloudAuthRequest.current) {
+        setCloudAuthError(error.message);
+        setCloudAuthReady(true);
+      }
+      throw error;
+    }
   };
 
   const logout = () => {
@@ -234,20 +306,36 @@ export function AuthProvider({ children }) {
   };
 
   // Funció auxiliar per canviar ràpidament d'usuari a la demo (Usuari normal vs Admin)
-  const switchUser = (userId) => {
-    cloudAuthRequest.current += 1;
+  const switchUser = async (userId) => {
+    const target = getUsers().find((user) => user.id === Number(userId));
+    if (!target || target.id === currentUser?.id) return;
+    if (!target.password) {
+      setCloudAuthError('Per canviar a aquest compte, inicia sessió amb les seves credencials.');
+      return;
+    }
+
+    const requestId = ++cloudAuthRequest.current;
     setSilentGoogleUser(null);
     setCloudUser(null);
+    setCloudAuthReady(false);
     setCloudAuthError('');
-    setCloudAuthReady(true);
-    clearCloudSession().catch((error) => {
-      console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
-    });
-    const users = getUsers();
-    const target = users.find(u => u.id === Number(userId));
-    if (target) {
-      persistCurrentUser(target);
-      setCurrentUserState(target);
+    try {
+      const { user: account } = await loginCloudAccount({
+        email: target.email,
+        password: target.password,
+      });
+      if (requestId !== cloudAuthRequest.current) return;
+      const synced = syncAccountUser(account).user;
+      persistCurrentUser(synced);
+      setCurrentUserState(synced);
+      setAvailableUsers(getUsers());
+      setCloudUser(account);
+      setCloudAuthReady(true);
+    } catch (error) {
+      if (requestId === cloudAuthRequest.current) {
+        setCloudAuthError(error.message);
+        setCloudAuthReady(true);
+      }
     }
   };
 
