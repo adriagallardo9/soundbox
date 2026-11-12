@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { useGoogleLogin } from '@react-oauth/google';
+import { useGoogleOAuth } from '@react-oauth/google';
 import {
   initDatabase,
   getCurrentUser,
@@ -25,47 +25,12 @@ export function AuthProvider({ children }) {
   const [cloudUser, setCloudUser] = useState(null);
   const [cloudAuthReady, setCloudAuthReady] = useState(false);
   const [cloudAuthError, setCloudAuthError] = useState('');
+  const [silentGoogleUser, setSilentGoogleUser] = useState(null);
   const cloudAuthRequest = useRef(0);
   const authBootstrapStarted = useRef(false);
   const expectedGoogleId = useRef(null);
-
-  const silentGoogleLogin = useGoogleLogin({
-    prompt: 'none',
-    onSuccess: async (tokenResponse) => {
-      const requestId = cloudAuthRequest.current;
-      try {
-        const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: 'Bearer ' + tokenResponse.access_token },
-        });
-        if (!profileResponse.ok) throw new Error('No s’ha pogut verificar la sessió de Google.');
-        const profile = await profileResponse.json();
-        if (profile.sub !== expectedGoogleId.current) {
-          throw new Error('El compte de Google actiu no coincideix amb l’usuari de SoundBox.');
-        }
-
-        const { user: sessionUser } = await establishGoogleSession(tokenResponse.access_token);
-        if (requestId === cloudAuthRequest.current) {
-          setCloudUser(sessionUser);
-          setCloudAuthError('');
-        }
-      } catch (error) {
-        if (requestId === cloudAuthRequest.current) {
-          setCloudUser(null);
-          setCloudAuthError(error.message);
-        }
-      } finally {
-        if (requestId === cloudAuthRequest.current) setCloudAuthReady(true);
-      }
-    },
-    onError: () => {
-      setCloudAuthError('No s’ha pogut restaurar la sessió de Google en segon pla.');
-      setCloudAuthReady(true);
-    },
-    onNonOAuthError: () => {
-      setCloudAuthError('Cal tornar a confirmar la sessió de Google per valorar llistes.');
-      setCloudAuthReady(true);
-    },
-  });
+  const silentGoogleAttempt = useRef(null);
+  const { clientId, scriptLoadedSuccessfully } = useGoogleOAuth();
 
   useEffect(() => {
     if (authBootstrapStarted.current) return;
@@ -87,7 +52,7 @@ export function AuthProvider({ children }) {
             await clearCloudSession();
             if (user.googleId && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
               expectedGoogleId.current = user.googleId;
-              silentGoogleLogin({ prompt: 'none', hint: user.email });
+              setSilentGoogleUser(user);
             } else {
               setCloudAuthError('La sessió Google activa no correspon a l’usuari actual.');
               setCloudAuthReady(true);
@@ -112,7 +77,7 @@ export function AuthProvider({ children }) {
 
         if (user?.googleId && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
           expectedGoogleId.current = user.googleId;
-          silentGoogleLogin({ prompt: 'none', hint: user.email });
+          setSilentGoogleUser(user);
           return;
         }
 
@@ -128,7 +93,70 @@ export function AuthProvider({ children }) {
       .finally(() => {
         if (requestId === cloudAuthRequest.current) setLoading(false);
       });
-  }, [silentGoogleLogin]);
+  }, []);
+
+  useEffect(() => {
+    if (!silentGoogleUser || !scriptLoadedSuccessfully) return undefined;
+    const requestId = cloudAuthRequest.current;
+    const attemptKey = `${requestId}:${silentGoogleUser.googleId}`;
+    if (silentGoogleAttempt.current === attemptKey) return undefined;
+    silentGoogleAttempt.current = attemptKey;
+
+    const finish = (error = '') => {
+      if (requestId !== cloudAuthRequest.current) return;
+      if (error) setCloudAuthError(error);
+      setSilentGoogleUser(null);
+      setCloudAuthReady(true);
+    };
+
+    const googleOAuth = window.google?.accounts?.oauth2;
+    if (!googleOAuth || !clientId) {
+      finish('No s’ha pogut restaurar la sessió de Google en segon pla.');
+      return undefined;
+    }
+
+    try {
+      const tokenClient = googleOAuth.initTokenClient({
+        client_id: clientId,
+        scope: 'openid profile email',
+        callback: async (tokenResponse) => {
+          if (requestId !== cloudAuthRequest.current) return;
+          if (!tokenResponse.access_token) {
+            finish('No s’ha pogut restaurar la sessió de Google en segon pla.');
+            return;
+          }
+
+          try {
+            const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            });
+            if (!profileResponse.ok) {
+              throw new Error('No s’ha pogut verificar la sessió de Google.');
+            }
+            const profile = await profileResponse.json();
+            if (profile.sub !== expectedGoogleId.current) {
+              throw new Error('El compte de Google actiu no coincideix amb l’usuari de SoundBox.');
+            }
+
+            const { user: sessionUser } = await establishGoogleSession(tokenResponse.access_token);
+            if (requestId === cloudAuthRequest.current) {
+              setCloudUser(sessionUser);
+              setCloudAuthError('');
+              setSilentGoogleUser(null);
+              setCloudAuthReady(true);
+            }
+          } catch (error) {
+            finish(error.message);
+          }
+        },
+        error_callback: () => finish('Cal tornar a confirmar la sessió de Google per valorar llistes.'),
+      });
+      tokenClient.requestAccessToken({ prompt: 'none', hint: silentGoogleUser.email });
+    } catch (error) {
+      finish(error.message || 'No s’ha pogut restaurar la sessió de Google en segon pla.');
+    }
+    return undefined;
+  }, [clientId, scriptLoadedSuccessfully, silentGoogleUser]);
 
   const refreshUsers = () => {
     setAvailableUsers(getUsers());
@@ -136,6 +164,7 @@ export function AuthProvider({ children }) {
 
   const login = (credentials) => {
     cloudAuthRequest.current += 1;
+    setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
     setCloudAuthReady(true);
@@ -149,6 +178,7 @@ export function AuthProvider({ children }) {
 
   const loginGoogle = async (googleUserData, accessToken) => {
     const requestId = ++cloudAuthRequest.current;
+    setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
     let cloudError = null;
@@ -177,6 +207,7 @@ export function AuthProvider({ children }) {
 
   const register = (data) => {
     cloudAuthRequest.current += 1;
+    setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
     setCloudAuthReady(true);
@@ -191,6 +222,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     cloudAuthRequest.current += 1;
+    setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
     setCloudAuthReady(true);
@@ -204,6 +236,7 @@ export function AuthProvider({ children }) {
   // Funció auxiliar per canviar ràpidament d'usuari a la demo (Usuari normal vs Admin)
   const switchUser = (userId) => {
     cloudAuthRequest.current += 1;
+    setSilentGoogleUser(null);
     setCloudUser(null);
     setCloudAuthError('');
     setCloudAuthReady(true);
