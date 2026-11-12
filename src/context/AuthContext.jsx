@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { useGoogleLogin } from '@react-oauth/google';
 import {
   initDatabase,
   getCurrentUser,
@@ -23,27 +24,111 @@ export function AuthProvider({ children }) {
   const [availableUsers, setAvailableUsers] = useState([]);
   const [cloudUser, setCloudUser] = useState(null);
   const [cloudAuthReady, setCloudAuthReady] = useState(false);
+  const [cloudAuthError, setCloudAuthError] = useState('');
   const cloudAuthRequest = useRef(0);
+  const authBootstrapStarted = useRef(false);
+  const expectedGoogleId = useRef(null);
+
+  const silentGoogleLogin = useGoogleLogin({
+    prompt: 'none',
+    onSuccess: async (tokenResponse) => {
+      const requestId = cloudAuthRequest.current;
+      try {
+        const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: 'Bearer ' + tokenResponse.access_token },
+        });
+        if (!profileResponse.ok) throw new Error('No s’ha pogut verificar la sessió de Google.');
+        const profile = await profileResponse.json();
+        if (profile.sub !== expectedGoogleId.current) {
+          throw new Error('El compte de Google actiu no coincideix amb l’usuari de SoundBox.');
+        }
+
+        const { user: sessionUser } = await establishGoogleSession(tokenResponse.access_token);
+        if (requestId === cloudAuthRequest.current) {
+          setCloudUser(sessionUser);
+          setCloudAuthError('');
+        }
+      } catch (error) {
+        if (requestId === cloudAuthRequest.current) {
+          setCloudUser(null);
+          setCloudAuthError(error.message);
+        }
+      } finally {
+        if (requestId === cloudAuthRequest.current) setCloudAuthReady(true);
+      }
+    },
+    onError: () => {
+      setCloudAuthError('No s’ha pogut restaurar la sessió de Google en segon pla.');
+      setCloudAuthReady(true);
+    },
+    onNonOAuthError: () => {
+      setCloudAuthError('Cal tornar a confirmar la sessió de Google per valorar llistes.');
+      setCloudAuthReady(true);
+    },
+  });
 
   useEffect(() => {
+    if (authBootstrapStarted.current) return;
+    authBootstrapStarted.current = true;
     initDatabase();
     const user = getCurrentUser(); // Comprova si la sessió és vàlida (no caducada)
     setCurrentUserState(user);
     setAvailableUsers(getUsers());
-    setLoading(false);
 
     const requestId = ++cloudAuthRequest.current;
     getCloudSession()
-      .then(({ user: sessionUser }) => {
-        if (requestId === cloudAuthRequest.current) setCloudUser(sessionUser);
+      .then(async ({ user: sessionUser }) => {
+        if (requestId !== cloudAuthRequest.current) return;
+        if (sessionUser) {
+          const matchesLocalUser = user && (user.googleId
+            ? user.googleId === sessionUser.sub
+            : user.email?.toLowerCase() === sessionUser.email?.toLowerCase());
+          if (user && !matchesLocalUser) {
+            await clearCloudSession();
+            if (user.googleId && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+              expectedGoogleId.current = user.googleId;
+              silentGoogleLogin({ prompt: 'none', hint: user.email });
+            } else {
+              setCloudAuthError('La sessió Google activa no correspon a l’usuari actual.');
+              setCloudAuthReady(true);
+            }
+            return;
+          }
+          setCloudUser(sessionUser);
+          setCloudAuthError('');
+          if (!user || !user.googleId) {
+            const restored = loginWithGoogle({
+              googleId: sessionUser.sub,
+              email: sessionUser.email,
+              name: sessionUser.name,
+              avatar: sessionUser.picture
+            });
+            setCurrentUserState(restored.user);
+            setAvailableUsers(getUsers());
+          }
+          setCloudAuthReady(true);
+          return;
+        }
+
+        if (user?.googleId && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+          expectedGoogleId.current = user.googleId;
+          silentGoogleLogin({ prompt: 'none', hint: user.email });
+          return;
+        }
+
+        setCloudUser(null);
+        setCloudAuthReady(true);
       })
       .catch(() => {
-        if (requestId === cloudAuthRequest.current) setCloudUser(null);
+        if (requestId !== cloudAuthRequest.current) return;
+        setCloudUser(null);
+        setCloudAuthError('No s’ha pogut comprovar la sessió de Google.');
+        setCloudAuthReady(true);
       })
       .finally(() => {
-        if (requestId === cloudAuthRequest.current) setCloudAuthReady(true);
+        if (requestId === cloudAuthRequest.current) setLoading(false);
       });
-  }, []);
+  }, [silentGoogleLogin]);
 
   const refreshUsers = () => {
     setAvailableUsers(getUsers());
@@ -52,6 +137,7 @@ export function AuthProvider({ children }) {
   const login = (credentials) => {
     cloudAuthRequest.current += 1;
     setCloudUser(null);
+    setCloudAuthError('');
     setCloudAuthReady(true);
     clearCloudSession().catch((error) => {
       console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
@@ -64,14 +150,21 @@ export function AuthProvider({ children }) {
   const loginGoogle = async (googleUserData, accessToken) => {
     const requestId = ++cloudAuthRequest.current;
     setCloudUser(null);
+    setCloudAuthError('');
     let cloudError = null;
     try {
       await clearCloudSession();
       const { user: sessionUser } = await establishGoogleSession(accessToken);
-      if (requestId === cloudAuthRequest.current) setCloudUser(sessionUser);
+      if (requestId === cloudAuthRequest.current) {
+        setCloudUser(sessionUser);
+        setCloudAuthError('');
+      }
     } catch (error) {
       cloudError = error;
-      if (requestId === cloudAuthRequest.current) setCloudUser(null);
+      if (requestId === cloudAuthRequest.current) {
+        setCloudUser(null);
+        setCloudAuthError(error.message);
+      }
     } finally {
       if (requestId === cloudAuthRequest.current) setCloudAuthReady(true);
     }
@@ -85,6 +178,7 @@ export function AuthProvider({ children }) {
   const register = (data) => {
     cloudAuthRequest.current += 1;
     setCloudUser(null);
+    setCloudAuthError('');
     setCloudAuthReady(true);
     clearCloudSession().catch((error) => {
       console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
@@ -98,6 +192,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     cloudAuthRequest.current += 1;
     setCloudUser(null);
+    setCloudAuthError('');
     setCloudAuthReady(true);
     clearCloudSession().catch((error) => {
       console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
@@ -110,6 +205,7 @@ export function AuthProvider({ children }) {
   const switchUser = (userId) => {
     cloudAuthRequest.current += 1;
     setCloudUser(null);
+    setCloudAuthError('');
     setCloudAuthReady(true);
     clearCloudSession().catch((error) => {
       console.error('[Cloudflare] No s’ha pogut tancar la sessió compartida:', error);
@@ -130,6 +226,7 @@ export function AuthProvider({ children }) {
         currentUser,
         cloudUser,
         cloudAuthReady,
+        cloudAuthError,
         isAdmin,
         loading,
         availableUsers,

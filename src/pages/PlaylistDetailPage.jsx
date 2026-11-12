@@ -8,10 +8,11 @@ import RatingStars from '../components/RatingStars';
 import { ArrowLeft, Trash2, Globe, Lock, Calendar, User, Music, Plus, X, Eye, Star } from 'lucide-react';
 
 export default function PlaylistDetailPage({ playlistId, onNavigate }) {
-  const { currentUser, cloudUser, cloudAuthReady, isAdmin } = useAuth();
+  const { currentUser, cloudUser, cloudAuthReady, cloudAuthError, isAdmin } = useAuth();
   const {
     sharedPlaylists,
     sharedPlaylistsLoading,
+    sharedPlaylistsError,
     removeTrackFromUserPlaylist,
     removePlaylist,
     ratePlaylist,
@@ -22,7 +23,14 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
   const recordedViewId = useRef(null);
 
   const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
-  const playlist = sharedPlaylist || getPlaylistById(playlistId);
+  const foundPlaylist = sharedPlaylist || getPlaylistById(playlistId);
+  const playlist = foundPlaylist
+    ? {
+        ...foundPlaylist,
+        tracks: Array.isArray(foundPlaylist.tracks) ? foundPlaylist.tracks : [],
+        albums: Array.isArray(foundPlaylist.albums) ? foundPlaylist.albums : [],
+      }
+    : null;
   const isShared = Boolean(sharedPlaylist);
   const isOwner = isShared
     ? cloudUser?.sub === playlist.owner_google_id
@@ -46,7 +54,10 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
     }
     return (
       <div className="py-20 text-center">
-        <h2 className="text-2xl font-bold text-white mb-2">Llista no trobada</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">
+          {sharedPlaylistsError ? 'No s’ha pogut carregar la llista' : 'Llista no trobada'}
+        </h2>
+        {sharedPlaylistsError && <p className="mx-auto max-w-lg text-sm text-rose-300">{sharedPlaylistsError}</p>}
         <button
           onClick={() => onNavigate('playlists')}
           className="mt-4 px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs"
@@ -157,6 +168,8 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
                 ? 'Comprovant la sessió...'
                 : cloudUser
                 ? 'La teva valoració es compartirà amb la comunitat.'
+                : currentUser && cloudAuthError
+                ? cloudAuthError
                 : 'Inicia sessió amb Google per poder valorar-la.'}
             </p>
             {playlist.user_rating && (
@@ -189,7 +202,7 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
               onClick={() => onNavigate('login')}
               className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 transition-colors hover:bg-emerald-400"
             >
-              Iniciar sessió
+              {currentUser ? 'Torna a validar Google' : 'Iniciar sessió'}
             </button>
           )}
         </section>
