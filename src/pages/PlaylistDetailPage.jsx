@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getPlaylistById } from '../services/storageService';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import AlbumGrid from '../components/AlbumGrid';
-import { ArrowLeft, Trash2, Globe, Lock, Calendar, User, Music } from 'lucide-react';
+import AddTrackToPlaylistModal from '../components/AddTrackToPlaylistModal';
+import { ArrowLeft, Trash2, Globe, Lock, Calendar, User, Music, Plus, X } from 'lucide-react';
 
 export default function PlaylistDetailPage({ playlistId, onNavigate }) {
   const { currentUser, isAdmin } = useAuth();
-  const { dataVersion, removeAlbumFromUserPlaylist, removePlaylist } = useData();
+  const { dataVersion, removeTrackFromUserPlaylist, removePlaylist } = useData();
+  const [isAddTracksOpen, setIsAddTracksOpen] = useState(false);
 
   const playlist = getPlaylistById(playlistId);
 
@@ -93,43 +95,84 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
         )}
       </section>
 
-      {playlist.tracks.length > 0 && (
-        <section className="space-y-4">
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Music className="w-5 h-5 text-emerald-400" />
             Cançons de la llista
           </h2>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setIsAddTracksOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-slate-950 transition-colors hover:bg-emerald-400"
+            >
+              <Plus className="h-4 w-4" />
+              Afegir cançons
+            </button>
+          )}
+        </div>
+
+        {playlist.tracks.length > 0 ? (
           <div className="space-y-2">
             {playlist.tracks.map((track) => (
-              <button
+              <div
                 key={`${track.id}:${track.albumId || track.album || ''}`}
-                type="button"
-                onClick={() => onNavigate('track', { track })}
-                className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#131c2e] border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
+                className="flex items-center gap-3 rounded-xl border border-slate-800 bg-[#131c2e] p-3"
               >
-                {track.cover_url ? (
-                  <img
-                    src={track.cover_url}
-                    alt=""
-                    className="w-12 h-12 rounded-lg object-cover"
-                    onError={(event) => { event.currentTarget.src = '/album-placeholder.svg'; }}
-                  />
-                ) : (
-                  <span className="w-12 h-12 rounded-lg bg-slate-800 flex items-center justify-center">
-                    <Music className="w-5 h-5 text-slate-400" />
+                <button
+                  type="button"
+                  onClick={() => onNavigate('track', { track })}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  {track.cover_url ? (
+                    <img
+                      src={track.cover_url}
+                      alt=""
+                      className="h-12 w-12 rounded-lg object-cover"
+                      onError={(event) => { event.currentTarget.src = '/album-placeholder.svg'; }}
+                    />
+                  ) : (
+                    <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-800">
+                      <Music className="h-5 w-5 text-slate-400" />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-white">{track.title}</span>
+                    <span className="block truncate text-xs text-slate-400">
+                      {track.artist}{track.album ? ` · ${track.album}` : ''}
+                    </span>
                   </span>
+                  {track.duration && <span className="text-xs font-mono text-slate-500">{track.duration}</span>}
+                </button>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => removeTrackFromUserPlaylist(playlist.id, track)}
+                    className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-rose-950/60 hover:text-rose-300"
+                    aria-label={`Treure ${track.title} de la llista`}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-white truncate">{track.title}</span>
-                  <span className="block text-xs text-slate-400 truncate">
-                    {track.artist}{track.album ? ` · ${track.album}` : ''}
-                  </span>
-                </span>
-                {track.duration && <span className="text-xs font-mono text-slate-500">{track.duration}</span>}
-              </button>
+              </div>
             ))}
           </div>
-        </section>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-8 text-center text-sm text-slate-400">
+            Encara no hi ha cançons en aquesta llista.
+            {canManage ? ' Fes servir «Afegir cançons» per començar.' : ''}
+          </p>
+        )}
+      </section>
+
+      {canManage && (
+        <AddTrackToPlaylistModal
+          isOpen={isAddTracksOpen}
+          onClose={() => setIsAddTracksOpen(false)}
+          playlistId={playlist.id}
+          existingTracks={playlist.tracks}
+        />
       )}
 
       {/* Albums in playlist */}

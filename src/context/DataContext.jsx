@@ -18,6 +18,8 @@ import {
   createPlaylist,
   addAlbumToPlaylist,
   removeAlbumFromPlaylist,
+  addTrackToPlaylist,
+  removeTrackFromPlaylist,
   deletePlaylist
 } from '../services/storageService';
 import { refreshLocalAlbumCovers } from '../services/spotifyApi';
@@ -186,6 +188,41 @@ export function DataProvider({ children }) {
     }
   }, [refresh, addToast]);
 
+  const addTrackToUserPlaylist = useCallback((playlistId, track) => {
+    if (!currentUser) {
+      addToast('Inicia sessió per afegir cançons a una llista.', 'error');
+      return false;
+    }
+    try {
+      const added = addTrackToPlaylist(playlistId, track, currentUser.id, currentUser.role);
+      if (!added) {
+        addToast('Aquesta cançó ja és a la llista.', 'info');
+        return false;
+      }
+      refresh();
+      addToast('Cançó afegida a la llista!', 'success');
+      return true;
+    } catch (err) {
+      addToast(err.message, 'error');
+      return false;
+    }
+  }, [currentUser, refresh, addToast]);
+
+  const removeTrackFromUserPlaylist = useCallback((playlistId, track) => {
+    if (!currentUser) return false;
+    try {
+      const removed = removeTrackFromPlaylist(playlistId, track, currentUser.id, currentUser.role);
+      if (removed) {
+        refresh();
+        addToast('Cançó eliminada de la llista.', 'info');
+      }
+      return removed;
+    } catch (err) {
+      addToast(err.message, 'error');
+      return false;
+    }
+  }, [currentUser, refresh, addToast]);
+
   const removePlaylist = useCallback((playlistId) => {
     if (!currentUser) return false;
     try {
@@ -214,6 +251,8 @@ export function DataProvider({ children }) {
         createNewPlaylist,
         addAlbumToUserPlaylist,
         removeAlbumFromUserPlaylist,
+        addTrackToUserPlaylist,
+        removeTrackFromUserPlaylist,
         removePlaylist,
         allReviews: getReviews(),
         allAlbums: getAlbums(),

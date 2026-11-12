@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Disc3, Loader2, MessageSquarePlus, Pause, Play } from 'lucide-react';
+import { ArrowLeft, Disc3, ListPlus, Loader2, MessageSquarePlus, Pause, Play } from 'lucide-react';
 import SpotifyEmbedPlayer from '../components/SpotifyEmbedPlayer';
+import AddTrackToPlaylistModal from '../components/AddTrackToPlaylistModal';
 import RatingStars from '../components/RatingStars';
 import ArtistLink from '../components/ArtistLink';
 import ReviewCard from '../components/ReviewCard';
@@ -18,6 +19,7 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
   const [loading, setLoading] = useState(Boolean(initialTrack));
   const [playingTrackId, setPlayingTrackId] = useState(null);
   const [isEmbedOpen, setIsEmbedOpen] = useState(false);
+  const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [editingComment, setEditingComment] = useState(null);
   const [draftRating, setDraftRating] = useState(null);
@@ -131,6 +133,15 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
     setIsCommentModalOpen(true);
   };
 
+  const handleAddToPlaylist = () => {
+    if (!currentUser) {
+      addToast('Inicia sessió per afegir cançons a una llista.', 'info');
+      onNavigate('login');
+      return;
+    }
+    setIsAddToPlaylistOpen(true);
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-8 pb-16">
       <button
@@ -179,6 +190,14 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
             >
               {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
               {isPlaying ? 'Pausa' : 'Reproduir'}
+            </button>
+            <button
+              type="button"
+              onClick={handleAddToPlaylist}
+              className="mt-7 inline-flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 font-bold text-white transition-colors hover:border-emerald-400 hover:text-emerald-300 sm:ml-3"
+            >
+              <ListPlus className="h-5 w-5" />
+              Afegir a una llista
             </button>
           </div>
         </div>
@@ -246,6 +265,11 @@ export default function TrackDetailPage({ track: initialTrack, onNavigate }) {
       {isEmbedOpen && (
         <SpotifyEmbedPlayer track={track} onClose={() => setIsEmbedOpen(false)} />
       )}
+      <AddTrackToPlaylistModal
+        isOpen={isAddToPlaylistOpen}
+        onClose={() => setIsAddToPlaylistOpen(false)}
+        track={track}
+      />
       <ReviewModal
         isOpen={isCommentModalOpen}
         onClose={() => {

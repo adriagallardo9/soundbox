@@ -528,6 +528,59 @@ export function addAlbumToPlaylist(playlistId, albumId, albumMeta) {
   return true;
 }
 
+function normalizeTrackValue(value = '') {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase();
+}
+
+function tracksMatch(first, second) {
+  const firstIsSpotifyTrack = /^[A-Za-z0-9]{22}$/.test(first.id || '');
+  const secondIsSpotifyTrack = /^[A-Za-z0-9]{22}$/.test(second.id || '');
+  if (firstIsSpotifyTrack && secondIsSpotifyTrack) return first.id === second.id;
+  return (
+    normalizeTrackValue(first.title) === normalizeTrackValue(second.title)
+    && normalizeTrackValue(first.artist) === normalizeTrackValue(second.artist)
+    && normalizeTrackValue(first.album) === normalizeTrackValue(second.album)
+  ) || Boolean(first.id && second.id && first.id === second.id && (!first.title || !second.title));
+}
+
+function getManageablePlaylist(playlistId, currentUserId, userRole) {
+  const playlists = getPlaylists();
+  const playlist = playlists.find(item => item.id === Number(playlistId));
+  if (!playlist) throw new Error('No s’ha trobat la llista.');
+  if (playlist.user_id !== currentUserId && userRole !== 'admin') {
+    throw new Error('No tens permís per modificar aquesta llista.');
+  }
+  return { playlists, playlist };
+}
+
+export function addTrackToPlaylist(playlistId, track, currentUserId, userRole) {
+  if (!track?.title || !track?.artist) {
+    throw new Error('La cançó no té prou informació per afegir-la a la llista.');
+  }
+
+  const { playlists, playlist } = getManageablePlaylist(playlistId, currentUserId, userRole);
+  const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
+  if (tracks.some(existing => tracksMatch(existing, track))) return false;
+
+  playlist.tracks = [...tracks, track];
+  setItem(KEYS.PLAYLISTS, playlists);
+  return true;
+}
+
+export function removeTrackFromPlaylist(playlistId, track, currentUserId, userRole) {
+  const { playlists, playlist } = getManageablePlaylist(playlistId, currentUserId, userRole);
+  const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
+  const updatedTracks = tracks.filter(existing => !tracksMatch(existing, track));
+  if (updatedTracks.length === tracks.length) return false;
+
+  playlist.tracks = updatedTracks;
+  setItem(KEYS.PLAYLISTS, playlists);
+  return true;
+}
+
 export function removeAlbumFromPlaylist(playlistId, albumId) {
   const playlistAlbums = getItem(KEYS.PLAYLIST_ALBUMS, INITIAL_PLAYLIST_ALBUMS);
   const updated = playlistAlbums.filter(pa => !(pa.playlist_id === Number(playlistId) && pa.album_id === albumId));
