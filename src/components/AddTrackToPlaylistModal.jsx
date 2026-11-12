@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { getUserPlaylists } from '../services/storageService';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { searchAll } from '../services/spotifyApi';
@@ -37,10 +36,12 @@ export default function AddTrackToPlaylistModal({
 
   if (!isOpen || !currentUser) return null;
 
-  const playlists = getUserPlaylists(currentUser.id);
+  const playlists = allPlaylists.filter((playlist) => (
+    playlist.user_id === currentUser.id || playlist.owner_google_id === currentUser.googleId
+  ));
   const targetPlaylist = playlistId == null
     ? null
-    : allPlaylists.find((playlist) => playlist.id === Number(playlistId));
+    : allPlaylists.find((playlist) => String(playlist.id) === String(playlistId));
 
   const findLocalTracks = (searchQuery) => {
     const normalizedQuery = normalizeTrackValue(searchQuery);
@@ -89,8 +90,8 @@ export default function AddTrackToPlaylistModal({
     }
   };
 
-  const handleAdd = (destinationPlaylistId, selectedTrack) => {
-    if (addTrackToUserPlaylist(destinationPlaylistId, selectedTrack)) onClose();
+  const handleAdd = async (destinationPlaylistId, selectedTrack) => {
+    if (await addTrackToUserPlaylist(destinationPlaylistId, selectedTrack)) onClose();
   };
 
   const alreadyInTarget = (selectedTrack) => existingTracks.some(

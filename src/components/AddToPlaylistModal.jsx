@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { getUserPlaylists } from '../services/storageService';
-import { X, Plus, FolderPlus, Check } from 'lucide-react';
+import { X, Plus, FolderPlus } from 'lucide-react';
 
 export default function AddToPlaylistModal({
   isOpen,
@@ -11,16 +10,16 @@ export default function AddToPlaylistModal({
   onCreateNewPlaylist
 }) {
   const { currentUser } = useAuth();
-  const { addAlbumToUserPlaylist } = useData();
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
+  const { addAlbumToUserPlaylist, allPlaylists } = useData();
 
   if (!isOpen || !currentUser) return null;
 
-  const playlists = getUserPlaylists(currentUser.id);
+  const playlists = allPlaylists.filter((playlist) => (
+    playlist.user_id === currentUser.id || playlist.owner_google_id === currentUser.googleId
+  ));
 
-  const handleAdd = (playlistId) => {
-    addAlbumToUserPlaylist(playlistId, album.id, album);
-    onClose();
+  const handleAdd = async (playlistId) => {
+    if (await addAlbumToUserPlaylist(playlistId, album.id, album)) onClose();
   };
 
   return (

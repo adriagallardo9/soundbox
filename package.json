@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "dev:worker": "wrangler dev --assets ./dist",
+    "db:migrate:local": "wrangler d1 migrations apply soundbox-shared --local",
+    "db:migrate:remote": "wrangler d1 migrations apply soundbox-shared --remote",
     "deploy:cloudflare": "npm run build && wrangler deploy",
     "db:init": "node scripts/init_sqlite.js"
   },

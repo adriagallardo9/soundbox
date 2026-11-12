@@ -24,7 +24,8 @@
 | **RF-04** | **Consultar fitxa d'àlbum** | Fitxa detallada amb portada d'alta resolució, llista de temes (tracklist), fragments d'àudio de 30s, nota mitjana i ressenyes. | ✅ Completat |
 | **RF-05** | **Puntuar i ressenyar** | Modal interactiu amb selector d'estrelles (1 a 5) i camp de ressenya amb comptador (fins a 2000 caràcters) i validacions. | ✅ Completat |
 | **RF-06** | **Escoltar més tard** | Botó per desar àlbums a la *Listenlist* / llista de pendents i consulta des del perfil privat. | ✅ Completat |
-| **RF-07** | **Llistes personalitzades** | Creació de llistes públiques o privades amb selecció de cançons i àlbums. | ✅ Completat |
+| **RF-07** | **Llistes personalitzades** | Creació de llistes públiques o privades amb selecció de cançons i àlbums; les públiques es comparteixen a Cloudflare. | ✅ Completat |
+| **RF-10** | **Valoració i visites de llistes públiques** | Valoració comunitària editable per usuari i comptador de visites compartit. | ✅ Completat |
 | **RF-08** | **Modificar / Eliminar ressenyes** | Els usuaris poden modificar o esborrar les seves pròpies ressenyes en qualsevol moment, actualitzant la nota mitjana. | ✅ Completat |
 | **RF-09** | **Moderació de continguts** | Panell d'administrador per supervisar i eliminar ressenyes inadequades (**Eliminar Admin**). | ✅ Completat |
 
@@ -36,7 +37,7 @@
 - **Frontend Framework**: [React.js](https://react.dev/) (components funcionals, React Hooks i Context API).
 - **Estils i Disseny Adaptatiu**: [Tailwind CSS](https://tailwindcss.com/) (disseny 100% responsive, dark mode modern).
 - **Iconografia**: [Lucide Icons](https://lucide.dev/) (`lucide-react`).
-- **Persistència i Dades**: Model relacional amb claus foranes i integritat en cascada emmagatzemat a `localStorage` amb càrrega de dades d'exemple (seed data). Script SQL disponible a `docs/bd/schema.sql`.
+- **Persistència i Dades**: Les dades personals i les llistes privades es desen a `localStorage`; les llistes públiques, les seves valoracions i les visites es comparteixen amb Cloudflare D1.
 - **Integració Externa**: Spotify Web API + Pla B (Mode Local / Fallback transparent).
 
 ---
@@ -126,7 +127,31 @@ Per habilitar l'inici de sessió amb Google:
    ```
 4. Reinicia `npm run dev`. Per desplegar, configura la mateixa variable a l'entorn de compilació abans d'executar `npm run deploy:cloudflare`.
 
-El Client ID és públic i s'incorpora al bundle del navegador; no hi posis cap client secret. Els comptes i la sessió es desen al navegador, com la resta de dades d'aquesta versió de SoundBox.
+El Client ID és públic i s'incorpora al bundle del navegador; no hi posis cap client secret.
+
+### Llistes públiques compartides (Cloudflare D1)
+
+Les llistes públiques, les valoracions i les visites necessiten D1 i una sessió Google validada pel Worker. Les visites compten una visita per navegador i dia; cada compte Google pot tenir una valoració editable per llista.
+
+1. Crea la base de dades i substitueix `REPLACE_WITH_D1_DATABASE_ID` a `wrangler.jsonc` per l'identificador retornat:
+   ```bash
+   npx wrangler d1 create soundbox-shared
+   ```
+2. Aplica la migració a D1:
+   ```bash
+   npm run db:migrate:remote
+   ```
+3. Configura els secrets del Worker amb el mateix Client ID de Google que `VITE_GOOGLE_CLIENT_ID` i un secret aleatori llarg per signar les sessions:
+   ```bash
+   npx wrangler secret put GOOGLE_CLIENT_ID
+   npx wrangler secret put SESSION_SECRET
+   ```
+4. Desplega el Worker:
+   ```bash
+   npm run deploy:cloudflare
+   ```
+
+Per provar-ho localment, aplica primer les migracions a D1 local (`npm run db:migrate:local`), genera `dist` amb `npm run build`, inicia `npm run dev:worker` en un terminal i `npm run dev` en un altre. Les variables de desenvolupament del Worker poden anar a `.dev.vars` (fitxer ignorat per Git); no hi desis secrets al repositori.
 
 ### 3. Compilar per a Producció
 ```bash

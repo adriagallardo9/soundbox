@@ -78,12 +78,12 @@ export default function LoginPage({ onNavigate }) {
         if (!res.ok) throw new Error('No s\'ha pogut obtenir el perfil de Google.');
         const profile = await res.json();
 
-        const { user, isNew } = loginGoogle({
+        const { user, isNew, cloudError } = await loginGoogle({
           googleId: profile.sub,
           email: profile.email,
           name: profile.name,
           avatar: profile.picture
-        });
+        }, tokenResponse.access_token);
 
         addToast(
           isNew
@@ -91,6 +91,9 @@ export default function LoginPage({ onNavigate }) {
             : `Benvingut/da de nou, ${user.name}!`,
           'success'
         );
+        if (cloudError) {
+          addToast(`Sessió iniciada, però no s’ha pogut activar la funció pública: ${cloudError.message}`, 'error');
+        }
         onNavigate('home');
       } catch (err) {
         setError(err.message || 'Error en iniciar sessió amb Google.');

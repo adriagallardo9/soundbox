@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNotification } from './NotificationContext';
 import {
   getAlbums,
+  getPlaylistById,
   getReviews,
   getPlaylists,
   getReviewsByAlbum,
@@ -14,26 +15,102 @@ import {
   getListenlist,
   isInListenlist,
   toggleListenlist,
-  getUserPlaylists,
   createPlaylist,
   addAlbumToPlaylist,
   removeAlbumFromPlaylist,
   addTrackToPlaylist,
   removeTrackFromPlaylist,
-  deletePlaylist
+  deletePlaylist,
+  replacePlaylistId,
+  tracksMatch
 } from '../services/storageService';
 import { refreshLocalAlbumCovers } from '../services/spotifyApi';
+import {
+  createSharedPlaylist,
+  deleteSharedPlaylist,
+  getSharedPlaylists,
+  importSharedPlaylist,
+  rateSharedPlaylist,
+  recordSharedPlaylistView,
+  updateSharedPlaylist
+} from '../services/sharedPlaylistService';
 
 const DataContext = createContext();
 
 export function DataProvider({ children }) {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, cloudUser } = useAuth();
   const { addToast } = useNotification();
   const [dataVersion, setDataVersion] = useState(0);
+  const [sharedPlaylists, setSharedPlaylists] = useState([]);
+  const [sharedPlaylistsError, setSharedPlaylistsError] = useState('');
+  const [sharedPlaylistsLoading, setSharedPlaylistsLoading] = useState(true);
+  const importedUsers = useRef(new Set());
 
   const refresh = useCallback(() => {
     setDataVersion(v => v + 1);
   }, []);
+
+  const reloadSharedPlaylists = useCallback(async () => {
+    setSharedPlaylistsLoading(true);
+    try {
+      const { playlists } = await getSharedPlaylists();
+      setSharedPlaylists(playlists);
+      setSharedPlaylistsError('');
+      return true;
+    } catch (error) {
+      setSharedPlaylistsError(error.message);
+      return false;
+    } finally {
+      setSharedPlaylistsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadSharedPlaylists();
+  }, [reloadSharedPlaylists]);
+
+  useEffect(() => {
+    if (
+      !cloudUser?.sub
+      || currentUser?.googleId !== cloudUser.sub
+      || sharedPlaylistsLoading
+      || importedUsers.current.has(cloudUser.sub)
+    ) return;
+
+    importedUsers.current.add(cloudUser.sub);
+    const legacyPlaylists = getPlaylists().filter((playlist) => (
+      playlist.is_public
+      && playlist.user_id === currentUser.id
+      && Number(playlist.id) > 3
+    ));
+    if (legacyPlaylists.length === 0) return;
+
+    const importLegacyPlaylists = async () => {
+      try {
+        for (const localPlaylist of legacyPlaylists) {
+          const localDetail = getPlaylistById(localPlaylist.id);
+          const { playlist } = await importSharedPlaylist({
+            sourceLocalId: localPlaylist.id,
+            title: localPlaylist.title,
+            description: localPlaylist.description,
+            tracks: localDetail.tracks,
+            albums: localDetail.albums.map((item) => item.album),
+          });
+          replacePlaylistId(localPlaylist.id, playlist.id);
+          setSharedPlaylists((current) => [
+            playlist,
+            ...current.filter((item) => item.id !== playlist.id),
+          ]);
+        }
+        refresh();
+      } catch (error) {
+        importedUsers.current.delete(cloudUser.sub);
+        setSharedPlaylistsError(`No s’han pogut compartir les llistes existents: ${error.message}`);
+      }
+    };
+
+    importLegacyPlaylists();
+  }, [cloudUser, currentUser, sharedPlaylistsLoading, refresh]);
 
   useEffect(() => {
     let isMounted = true;
@@ -142,12 +219,23 @@ export function DataProvider({ children }) {
     }
   }, [currentUser, refresh, addToast]);
 
-  const createNewPlaylist = useCallback(({ title, description, isPublic, tracks = [] }) => {
+  const createNewPlaylist = useCallback(async ({ title, description, isPublic, tracks = [] }) => {
     if (!currentUser) {
       addToast('Cal iniciar sessió per crear llistes.', 'error');
       return null;
     }
     try {
+      if (isPublic) {
+        if (!cloudUser?.sub || cloudUser.sub !== currentUser.googleId) {
+          throw new Error('Inicia sessió amb Google per compartir una llista pública.');
+        }
+        const { playlist } = await createSharedPlaylist({ title, description, tracks, albums: [] });
+        setSharedPlaylists((current) => [playlist, ...current.filter((item) => item.id !== playlist.id)]);
+        refresh();
+        addToast('Llista pública creada i compartida amb tothom!', 'success');
+        return playlist;
+      }
+
       const pl = createPlaylist({
         userId: currentUser.id,
         title,
@@ -156,16 +244,30 @@ export function DataProvider({ children }) {
         tracks
       });
       refresh();
-      addToast('Llista creada amb èxit!', 'success');
+      addToast('Llista privada creada amb èxit!', 'success');
       return pl;
     } catch (err) {
       addToast(err.message, 'error');
       return null;
     }
-  }, [currentUser, refresh, addToast]);
+  }, [currentUser, cloudUser, refresh, addToast]);
 
-  const addAlbumToUserPlaylist = useCallback((playlistId, albumId, albumMeta) => {
+  const addAlbumToUserPlaylist = useCallback(async (playlistId, albumId, albumMeta) => {
     try {
+      const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
+      if (sharedPlaylist) {
+        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+          throw new Error('Només la persona propietària pot modificar aquesta llista.');
+        }
+        const albums = sharedPlaylist.albums.map((item) => item.album || item);
+        if (!albums.some((item) => item.id === albumId)) {
+          const { playlist } = await updateSharedPlaylist(playlistId, { albums: [...albums, albumMeta] });
+          setSharedPlaylists((current) => current.map((item) => item.id === playlist.id ? playlist : item));
+        }
+        refresh();
+        addToast('Àlbum afegit a la llista!', 'success');
+        return true;
+      }
       addAlbumToPlaylist(playlistId, albumId, albumMeta);
       refresh();
       addToast('Àlbum afegit a la llista!', 'success');
@@ -174,10 +276,24 @@ export function DataProvider({ children }) {
       addToast(err.message, 'error');
       return false;
     }
-  }, [refresh, addToast]);
+  }, [sharedPlaylists, cloudUser, refresh, addToast]);
 
-  const removeAlbumFromUserPlaylist = useCallback((playlistId, albumId) => {
+  const removeAlbumFromUserPlaylist = useCallback(async (playlistId, albumId) => {
     try {
+      const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
+      if (sharedPlaylist) {
+        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+          throw new Error('Només la persona propietària pot modificar aquesta llista.');
+        }
+        const albums = sharedPlaylist.albums
+          .map((item) => item.album || item)
+          .filter((item) => item.id !== albumId);
+        const { playlist } = await updateSharedPlaylist(playlistId, { albums });
+        setSharedPlaylists((current) => current.map((item) => item.id === playlist.id ? playlist : item));
+        refresh();
+        addToast('Àlbum eliminat de la llista.', 'info');
+        return true;
+      }
       removeAlbumFromPlaylist(playlistId, albumId);
       refresh();
       addToast('Àlbum eliminat de la llista.', 'info');
@@ -186,14 +302,31 @@ export function DataProvider({ children }) {
       addToast(err.message, 'error');
       return false;
     }
-  }, [refresh, addToast]);
+  }, [sharedPlaylists, cloudUser, refresh, addToast]);
 
-  const addTrackToUserPlaylist = useCallback((playlistId, track) => {
+  const addTrackToUserPlaylist = useCallback(async (playlistId, track) => {
     if (!currentUser) {
       addToast('Inicia sessió per afegir cançons a una llista.', 'error');
       return false;
     }
     try {
+      const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
+      if (sharedPlaylist) {
+        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+          throw new Error('Només la persona propietària pot modificar aquesta llista.');
+        }
+        if (sharedPlaylist.tracks.some((existing) => tracksMatch(existing, track))) {
+          addToast('Aquesta cançó ja és a la llista.', 'info');
+          return false;
+        }
+        const { playlist } = await updateSharedPlaylist(playlistId, {
+          tracks: [...sharedPlaylist.tracks, track],
+        });
+        setSharedPlaylists((current) => current.map((item) => item.id === playlist.id ? playlist : item));
+        refresh();
+        addToast('Cançó afegida a la llista!', 'success');
+        return true;
+      }
       const added = addTrackToPlaylist(playlistId, track, currentUser.id, currentUser.role);
       if (!added) {
         addToast('Aquesta cançó ja és a la llista.', 'info');
@@ -206,11 +339,23 @@ export function DataProvider({ children }) {
       addToast(err.message, 'error');
       return false;
     }
-  }, [currentUser, refresh, addToast]);
+  }, [currentUser, cloudUser, sharedPlaylists, refresh, addToast]);
 
-  const removeTrackFromUserPlaylist = useCallback((playlistId, track) => {
+  const removeTrackFromUserPlaylist = useCallback(async (playlistId, track) => {
     if (!currentUser) return false;
     try {
+      const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
+      if (sharedPlaylist) {
+        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+          throw new Error('Només la persona propietària pot modificar aquesta llista.');
+        }
+        const tracks = sharedPlaylist.tracks.filter((existing) => !tracksMatch(existing, track));
+        const { playlist } = await updateSharedPlaylist(playlistId, { tracks });
+        setSharedPlaylists((current) => current.map((item) => item.id === playlist.id ? playlist : item));
+        refresh();
+        addToast('Cançó eliminada de la llista.', 'info');
+        return true;
+      }
       const removed = removeTrackFromPlaylist(playlistId, track, currentUser.id, currentUser.role);
       if (removed) {
         refresh();
@@ -221,11 +366,22 @@ export function DataProvider({ children }) {
       addToast(err.message, 'error');
       return false;
     }
-  }, [currentUser, refresh, addToast]);
+  }, [currentUser, cloudUser, sharedPlaylists, refresh, addToast]);
 
-  const removePlaylist = useCallback((playlistId) => {
+  const removePlaylist = useCallback(async (playlistId) => {
     if (!currentUser) return false;
     try {
+      if (sharedPlaylists.some((item) => String(item.id) === String(playlistId))) {
+        const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
+        if (cloudUser?.sub !== sharedPlaylist.owner_google_id) {
+          throw new Error('Només la persona propietària pot eliminar aquesta llista.');
+        }
+        await deleteSharedPlaylist(playlistId);
+        setSharedPlaylists((current) => current.filter((item) => String(item.id) !== String(playlistId)));
+        refresh();
+        addToast('Llista eliminada correctament.', 'info');
+        return true;
+      }
       deletePlaylist(playlistId, currentUser.id, currentUser.role);
       refresh();
       addToast('Llista eliminada correctament.', 'info');
@@ -234,13 +390,46 @@ export function DataProvider({ children }) {
       addToast(err.message, 'error');
       return false;
     }
-  }, [currentUser, refresh, addToast]);
+  }, [currentUser, cloudUser, sharedPlaylists, refresh, addToast]);
+
+  const ratePlaylist = useCallback(async (playlistId, rating) => {
+    try {
+      const { playlist } = await rateSharedPlaylist(playlistId, rating);
+      setSharedPlaylists((current) => current.map((item) => item.id === playlist.id ? playlist : item));
+      addToast('Valoració desada!', 'success');
+      return true;
+    } catch (error) {
+      addToast(error.message, 'error');
+      return false;
+    }
+  }, [addToast]);
+
+  const viewPlaylist = useCallback(async (playlistId) => {
+    try {
+      const { playlist } = await recordSharedPlaylistView(playlistId);
+      setSharedPlaylists((current) => current.map((item) => item.id === playlist.id ? playlist : item));
+    } catch (error) {
+      setSharedPlaylistsError(error.message);
+    }
+  }, []);
+
+  const localPlaylists = getPlaylists();
+  const allPlaylists = [
+    ...sharedPlaylists,
+    ...localPlaylists.filter((local) => !sharedPlaylists.some((shared) => String(shared.id) === String(local.id))),
+  ];
 
   return (
     <DataContext.Provider
       value={{
         dataVersion,
         refresh,
+        sharedPlaylists,
+        sharedPlaylistsError,
+        sharedPlaylistsLoading,
+        reloadSharedPlaylists,
+        ratePlaylist,
+        viewPlaylist,
         getAlbumStats,
         getAlbumReviews,
         getTrackReviews: getTrackReviewsList,
@@ -256,7 +445,7 @@ export function DataProvider({ children }) {
         removePlaylist,
         allReviews: getReviews(),
         allAlbums: getAlbums(),
-        allPlaylists: getPlaylists()
+        allPlaylists
       }}
     >
       {children}

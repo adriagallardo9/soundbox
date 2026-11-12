@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { getListenlist, getUserPlaylists, getReviewsByUser } from '../services/storageService';
+import { getListenlist, getReviewsByUser } from '../services/storageService';
 import ReviewCard from '../components/ReviewCard';
 import AlbumGrid from '../components/AlbumGrid';
 import ReviewModal from '../components/ReviewModal';
@@ -23,7 +23,7 @@ import {
 
 export default function ProfilePage({ userId = null, onNavigate }) {
   const { currentUser, isAdmin } = useAuth();
-  const { dataVersion, removePlaylist } = useData();
+  const { dataVersion, allPlaylists, removePlaylist } = useData();
 
   // If userId is provided, view that user, otherwise current user
   const effectiveUserId = userId || (currentUser ? currentUser.id : 1);
@@ -37,7 +37,10 @@ export default function ProfilePage({ userId = null, onNavigate }) {
   // Load user data
   const userReviews = getReviewsByUser(effectiveUserId);
   const listenlistItems = getListenlist(effectiveUserId);
-  const userPlaylists = getUserPlaylists(effectiveUserId);
+  const userPlaylists = allPlaylists.filter((playlist) => (
+    playlist.user_id === effectiveUserId
+    || (isOwnProfile && playlist.owner_google_id && playlist.owner_google_id === currentUser?.googleId)
+  ));
 
   const displayUser = isOwnProfile && currentUser
     ? currentUser

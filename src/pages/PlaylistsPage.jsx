@@ -3,10 +3,16 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import PlaylistModal from '../components/PlaylistModal';
-import { ListMusic, Plus, Globe, Lock, ArrowRight, User } from 'lucide-react';
+import { ListMusic, Plus, Globe, Lock, ArrowRight, User, Eye, Star, AlertCircle } from 'lucide-react';
 
 export default function PlaylistsPage({ onNavigate }) {
-  const { allPlaylists, allAlbums } = useData();
+  const {
+    allPlaylists,
+    allAlbums,
+    sharedPlaylistsError,
+    sharedPlaylistsLoading,
+    reloadSharedPlaylists
+  } = useData();
   const { currentUser } = useAuth();
   const { addToast } = useNotification();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -49,6 +55,26 @@ export default function PlaylistsPage({ onNavigate }) {
         </button>
       </div>
 
+      {sharedPlaylistsError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/50 bg-amber-950/30 p-3 text-xs text-amber-200" role="status">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            No s’han pogut carregar les llistes compartides: {sharedPlaylistsError}
+          </span>
+          <button
+            type="button"
+            onClick={reloadSharedPlaylists}
+            className="rounded-lg border border-amber-600/50 px-3 py-1.5 font-semibold hover:bg-amber-900/40"
+          >
+            Tornar-ho a provar
+          </button>
+        </div>
+      )}
+
+      {sharedPlaylistsLoading && (
+        <p className="text-xs text-slate-400" role="status">Carregant les llistes públiques...</p>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {visiblePlaylists.map((pl) => (
           <div
@@ -74,12 +100,24 @@ export default function PlaylistsPage({ onNavigate }) {
               <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
                 {pl.description || 'Sense descripció introduïda.'}
               </p>
+
+              {pl.owner_google_id && (
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400">
+                  <span className="inline-flex items-center gap-1">
+                    <Eye className="h-3.5 w-3.5" /> {pl.views || 0} visites
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Star className="h-3.5 w-3.5 text-amber-300" />
+                    {pl.rating_count ? `${pl.average_rating} (${pl.rating_count})` : 'Sense valoracions'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-slate-500" />
-                {pl.user_id === 1 ? 'Adrià Melòman' : pl.user_id === 2 ? 'Adrià Gallardo' : 'Clara Valls'}
+                {pl.author?.username || (pl.user_id === 1 ? 'Adrià Melòman' : pl.user_id === 2 ? 'Adrià Gallardo' : 'Clara Valls')}
               </span>
 
               <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform flex items-center gap-1">

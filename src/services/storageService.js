@@ -463,7 +463,7 @@ export function getPlaylists() {
 
 export function getPlaylistById(playlistId) {
   const playlists = getPlaylists();
-  const playlist = playlists.find(p => p.id === Number(playlistId));
+  const playlist = playlists.find(p => String(p.id) === String(playlistId));
   if (!playlist) return null;
 
   const users = getUsers();
@@ -485,6 +485,24 @@ export function getPlaylistById(playlistId) {
     albums: items,
     tracks: Array.isArray(playlist.tracks) ? playlist.tracks : []
   };
+}
+
+export function replacePlaylistId(localId, sharedId) {
+  const playlists = getPlaylists();
+  const playlist = playlists.find((item) => String(item.id) === String(localId));
+  if (!playlist) return false;
+
+  playlist.id = sharedId;
+  setItem(KEYS.PLAYLISTS, playlists);
+
+  const playlistAlbums = getItem(KEYS.PLAYLIST_ALBUMS, INITIAL_PLAYLIST_ALBUMS)
+    .map((item) => (
+      String(item.playlist_id) === String(localId)
+        ? { ...item, playlist_id: sharedId }
+        : item
+    ));
+  setItem(KEYS.PLAYLIST_ALBUMS, playlistAlbums);
+  return true;
 }
 
 export function getUserPlaylists(userId) {
@@ -535,7 +553,7 @@ function normalizeTrackValue(value = '') {
     .toLocaleLowerCase();
 }
 
-function tracksMatch(first, second) {
+export function tracksMatch(first, second) {
   const firstIsSpotifyTrack = /^[A-Za-z0-9]{22}$/.test(first.id || '');
   const secondIsSpotifyTrack = /^[A-Za-z0-9]{22}$/.test(second.id || '');
   if (firstIsSpotifyTrack && secondIsSpotifyTrack) return first.id === second.id;

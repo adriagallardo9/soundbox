@@ -30,6 +30,7 @@ export default function PlaylistModal({ isOpen, onClose }) {
   const [searchingTracks, setSearchingTracks] = useState(false);
   const [trackSearchError, setTrackSearchError] = useState('');
   const [hasSearchedTracks, setHasSearchedTracks] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -91,31 +92,38 @@ export default function PlaylistModal({ isOpen, onClose }) {
     ));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
       setError('Si us plau, introdueix un títol per a la llista.');
       return;
     }
 
-    const created = createNewPlaylist({
-      title: title.trim(),
-      description: description.trim(),
-      isPublic,
-      tracks: selectedTracks
-    });
+    setSaving(true);
+    try {
+      const created = await createNewPlaylist({
+        title: title.trim(),
+        description: description.trim(),
+        isPublic,
+        tracks: selectedTracks
+      });
 
-    if (created) {
-      setTitle('');
-      setDescription('');
-      setIsPublic(true);
-      setError('');
-      setTrackQuery('');
-      setTrackResults([]);
-      setSelectedTracks([]);
-      setTrackSearchError('');
-      setHasSearchedTracks(false);
-      onClose();
+      if (created) {
+        setTitle('');
+        setDescription('');
+        setIsPublic(true);
+        setError('');
+        setTrackQuery('');
+        setTrackResults([]);
+        setSelectedTracks([]);
+        setTrackSearchError('');
+        setHasSearchedTracks(false);
+        onClose();
+      } else {
+        setError('No s’ha pogut crear la llista. Per compartir-ne una de pública, inicia sessió amb Google.');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -276,7 +284,7 @@ export default function PlaylistModal({ isOpen, onClose }) {
             <div className="flex items-center gap-2.5">
               {isPublic ? <Globe className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-amber-400" />}
               <span className="text-xs font-medium text-slate-200">
-                {isPublic ? 'Llista pública (visible al teu perfil)' : 'Llista privada (només tu)'}
+                {isPublic ? 'Llista pública, compartida amb tothom' : 'Llista privada (només tu)'}
               </span>
             </div>
             <button
@@ -304,9 +312,10 @@ export default function PlaylistModal({ isOpen, onClose }) {
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-md shadow-emerald-500/20"
+              disabled={saving}
+              className="px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-md shadow-emerald-500/20 disabled:opacity-50"
             >
-              Crear Llista
+              {saving ? 'Desant...' : 'Crear Llista'}
             </button>
           </div>
         </form>
