@@ -94,7 +94,7 @@ function requireDatabase(env) {
   return env.DB ? null : jsonError(503, 'La base de dades compartida no està configurada al Worker.');
 }
 
-const PASSWORD_ITERATIONS = 120000;
+const PASSWORD_ITERATIONS = 100000;
 
 function hexToBytes(value) {
   if (!/^(?:[0-9a-f]{2})+$/i.test(value)) throw new Error('Dades de contrasenya no vàlides.');

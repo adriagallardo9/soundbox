@@ -1,0 +1,10 @@
+UPDATE soundbox_accounts SET password_hash = 'f38248ec6f6d7c0361d61f555dbb78138bdd7508cdb9694b35430674191519b6' WHERE id = 1;
+UPDATE soundbox_accounts SET password_hash = 'ebcf0f964417f4398a9e458e1ac978a72ab634943bb9306f91a771b8667bcd22' WHERE id = 2;
+UPDATE soundbox_accounts SET password_hash = '66a35546a5c8c266859d7ca3f5ad9b06c6c208e6b6e4776e5ca0b7b57613f316' WHERE id = 3;
+UPDATE soundbox_accounts SET password_hash = 'd831c5c5e0ecec4ad677e346c849dd0b7b4d0818ec8b61958594334889acb3de' WHERE id = 4;
+UPDATE soundbox_accounts SET password_hash = '07ecc1a01a7c83add6e1dadf99e07991e93fd15ee236e451af55a4c43d4a12b9' WHERE id = 5;
+UPDATE soundbox_accounts SET password_hash = '676af234914ac0d47a748f32451a69c6493ea2e98f08a59d125b2cbf347354a2' WHERE id = 6;
+UPDATE soundbox_accounts SET password_hash = '6379e4639e7d35123429a7bebc281787f9fd11595a60966439c1cd26cf9c3514' WHERE id = 7;
+UPDATE soundbox_accounts SET password_hash = 'f61ae7116fbc044709ed5d50d6e30e13cd22b0a48d9d70f46351430c4094ae21' WHERE id = 8;
+UPDATE soundbox_accounts SET password_hash = 'af44d3d09c5398393ffb099d4a744460e210a964c9709df2508cefb563cf9d3b' WHERE id = 9;
+UPDATE soundbox_accounts SET password_hash = '936652a64f2e50269225da25195debafabb89d6ad6a228bad6b4a492ecaa1674' WHERE id = 10;
