@@ -482,7 +482,8 @@ export function getPlaylistById(playlistId) {
   return {
     ...playlist,
     author,
-    albums: items
+    albums: items,
+    tracks: Array.isArray(playlist.tracks) ? playlist.tracks : []
   };
 }
 
@@ -491,7 +492,7 @@ export function getUserPlaylists(userId) {
   return playlists.filter(p => p.user_id === userId);
 }
 
-export function createPlaylist({ userId, title, description, isPublic = true }) {
+export function createPlaylist({ userId, title, description, isPublic = true, tracks = [] }) {
   if (!title || title.trim().length === 0) {
     throw new Error('El títol de la llista és obligatori.');
   }
@@ -502,6 +503,7 @@ export function createPlaylist({ userId, title, description, isPublic = true }) 
     title: title.trim(),
     description: (description || '').trim(),
     is_public: isPublic,
+    tracks: Array.isArray(tracks) ? tracks : [],
     created_at: new Date().toISOString()
   };
   playlists.unshift(newPlaylist);

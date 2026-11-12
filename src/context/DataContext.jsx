@@ -140,7 +140,7 @@ export function DataProvider({ children }) {
     }
   }, [currentUser, refresh, addToast]);
 
-  const createNewPlaylist = useCallback(({ title, description, isPublic }) => {
+  const createNewPlaylist = useCallback(({ title, description, isPublic, tracks = [] }) => {
     if (!currentUser) {
       addToast('Cal iniciar sessió per crear llistes.', 'error');
       return null;
@@ -150,7 +150,8 @@ export function DataProvider({ children }) {
         userId: currentUser.id,
         title,
         description,
-        isPublic
+        isPublic,
+        tracks
       });
       refresh();
       addToast('Llista creada amb èxit!', 'success');

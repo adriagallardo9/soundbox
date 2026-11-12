@@ -24,7 +24,7 @@
 | **RF-04** | **Consultar fitxa d'àlbum** | Fitxa detallada amb portada d'alta resolució, llista de temes (tracklist), fragments d'àudio de 30s, nota mitjana i ressenyes. | ✅ Completat |
 | **RF-05** | **Puntuar i ressenyar** | Modal interactiu amb selector d'estrelles (1 a 5) i camp de ressenya amb comptador (fins a 2000 caràcters) i validacions. | ✅ Completat |
 | **RF-06** | **Escoltar més tard** | Botó per desar àlbums a la *Listenlist* / llista de pendents i consulta des del perfil privat. | ✅ Completat |
-| **RF-07** | **Llistes personalitzades** | Creació, edició i compartició de llistes temàtiques d'àlbums (públiques o privades). | ✅ Completat |
+| **RF-07** | **Llistes personalitzades** | Creació de llistes públiques o privades amb selecció de cançons i àlbums. | ✅ Completat |
 | **RF-08** | **Modificar / Eliminar ressenyes** | Els usuaris poden modificar o esborrar les seves pròpies ressenyes en qualsevol moment, actualitzant la nota mitjana. | ✅ Completat |
 | **RF-09** | **Moderació de continguts** | Panell d'administrador per supervisar i eliminar ressenyes inadequades (**Eliminar Admin**). | ✅ Completat |
 
