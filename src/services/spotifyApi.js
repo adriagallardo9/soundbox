@@ -392,3 +392,38 @@ export async function getAlbumDetails(albumId, onFallbackNotice = null) {
     genres: ['Música'], description: 'Informació disponible en mode local.', tracks: [],
   };
 }
+
+export async function resolveAlbumCover(album) {
+  const existingCover = album?.cover_url || album?.coverUrl;
+  if (existingCover && existingCover !== PLACEHOLDER_COVER) return existingCover;
+
+  if (album?.id) {
+    const details = await getAlbumDetails(album.id);
+    if (details.cover_url && details.cover_url !== PLACEHOLDER_COVER) return details.cover_url;
+  }
+
+  if (!album?.title) return PLACEHOLDER_COVER;
+
+  const { albums } = await searchAll(`${album.title} ${album.artist || ''}`);
+  const expectedTitle = normalizeText(album.title);
+  const expectedArtist = normalizeText(album.artist || '');
+  const titleMatches = albums.filter((candidate) => {
+    const candidateTitle = normalizeText(candidate.title);
+    return candidateTitle === expectedTitle
+      || candidateTitle.startsWith(`${expectedTitle} `);
+  });
+  const exactTitleMatches = titleMatches.filter((candidate) => (
+    normalizeText(candidate.title) === expectedTitle && candidate.cover_url
+  ));
+  const artistMatchedAlbum = titleMatches.find((candidate) => {
+    const candidateArtist = normalizeText(candidate.artist);
+    return candidate.cover_url
+      && (!expectedArtist
+        || candidateArtist.includes(expectedArtist)
+        || expectedArtist.includes(candidateArtist));
+  });
+  const matchingAlbum = artistMatchedAlbum
+    || (exactTitleMatches.length === 1 ? exactTitleMatches[0] : null);
+
+  return matchingAlbum?.cover_url || PLACEHOLDER_COVER;
+}

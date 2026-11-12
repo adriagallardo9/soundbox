@@ -5,14 +5,37 @@ import { useAuth } from '../context/AuthContext';
 import AlbumGrid from '../components/AlbumGrid';
 import AddTrackToPlaylistModal from '../components/AddTrackToPlaylistModal';
 import RatingStars from '../components/RatingStars';
+import { resolveAlbumCover } from '../services/spotifyApi';
 import { ArrowLeft, Trash2, Globe, Lock, Calendar, User, Music, Plus, X, Eye, Star } from 'lucide-react';
 
+function getCoverUrl(item) {
+  const images = Array.isArray(item?.images) ? item.images : [];
+  const image = typeof item?.image === 'string' ? item.image : item?.image?.url;
+  return item?.cover_url
+    || item?.coverUrl
+    || item?.image_url
+    || image
+    || images[1]?.url
+    || images[0]?.url
+    || '';
+}
+
+function hasArtwork(item) {
+  const cover = getCoverUrl(item);
+  return Boolean(cover && cover !== '/album-placeholder.svg');
+}
+
+function getAlbumCoverKey(album) {
+  return album.id || `${album.title || ''}|${album.artist || ''}`;
+}
+
 export default function PlaylistDetailPage({ playlistId, onNavigate }) {
-  const { currentUser, cloudUser, cloudAuthReady, cloudAuthError, isAdmin } = useAuth();
+  const { currentUser, cloudUser, cloudAuthReady, isAdmin } = useAuth();
   const {
     sharedPlaylists,
     sharedPlaylistsLoading,
     sharedPlaylistsError,
+    allAlbums,
     removeTrackFromUserPlaylist,
     removePlaylist,
     ratePlaylist,
@@ -20,15 +43,68 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
   } = useData();
   const [isAddTracksOpen, setIsAddTracksOpen] = useState(false);
   const [selectedRating, setSelectedRating] = useState(0);
+  const [resolvedCovers, setResolvedCovers] = useState({});
   const recordedViewId = useRef(null);
 
   const sharedPlaylist = sharedPlaylists.find((item) => String(item.id) === String(playlistId));
   const foundPlaylist = sharedPlaylist || getPlaylistById(playlistId);
+  const rawTracks = Array.isArray(foundPlaylist?.tracks) ? foundPlaylist.tracks : [];
+  const rawAlbums = Array.isArray(foundPlaylist?.albums) ? foundPlaylist.albums : [];
+  const coverRequests = [...new Map(rawAlbums
+    .map((item) => item?.album || item)
+    .concat(rawTracks.map((track) => ({
+      id: track.albumId,
+      title: track.album,
+      artist: track.artist,
+      cover_url: getCoverUrl(track),
+    })))
+    .filter((album) => album?.id || album?.title)
+    .filter((album) => !hasArtwork(album))
+    .filter((album) => !allAlbums.some((localAlbum) => (
+      (album.id && String(localAlbum.id) === String(album.id) && hasArtwork(localAlbum))
+      || (!album.id && album.title === localAlbum.title && hasArtwork(localAlbum))
+    )))
+    .map((album) => [getAlbumCoverKey(album), album]))].map(([, album]) => album);
+  const coverRequestKey = JSON.stringify(coverRequests.map(({ id, title, artist }) => [id, title, artist]));
   const playlist = foundPlaylist
     ? {
         ...foundPlaylist,
-        tracks: Array.isArray(foundPlaylist.tracks) ? foundPlaylist.tracks : [],
-        albums: Array.isArray(foundPlaylist.albums) ? foundPlaylist.albums : [],
+        tracks: rawTracks.map((track) => {
+          const localAlbum = allAlbums.find((album) => (
+            (track.albumId && String(album.id) === String(track.albumId))
+            || (track.album && album.title === track.album)
+          ));
+          const trackCover = getCoverUrl(track);
+          return {
+            ...track,
+            cover_url: (hasArtwork(track) && trackCover)
+              || resolvedCovers[getAlbumCoverKey({
+                id: track.albumId,
+                title: track.album,
+                artist: track.artist,
+              })]
+              || (hasArtwork(localAlbum) && getCoverUrl(localAlbum))
+              || '/album-placeholder.svg',
+          };
+        }),
+        albums: rawAlbums.map((item) => {
+          const album = item?.album || item;
+          const localAlbum = allAlbums.find((candidate) => (
+            String(candidate.id) === String(album.id)
+            || (album.title && candidate.title === album.title)
+          ));
+          const albumCover = getCoverUrl(album);
+          return {
+            ...item,
+            album: {
+              ...album,
+              cover_url: (hasArtwork(album) && albumCover)
+                || resolvedCovers[getAlbumCoverKey(album)]
+                || (hasArtwork(localAlbum) && getCoverUrl(localAlbum))
+                || '/album-placeholder.svg',
+            },
+          };
+        }),
       }
     : null;
   const isShared = Boolean(sharedPlaylist);
@@ -36,6 +112,25 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
     ? cloudUser?.sub === playlist.owner_google_id
     : currentUser?.id === playlist?.user_id;
   const canManage = isShared ? isOwner : isOwner || isAdmin;
+
+  useEffect(() => {
+    if (!foundPlaylist || coverRequests.length === 0) return undefined;
+    let active = true;
+    Promise.all(coverRequests.map(async (album) => [
+      album.id || `${album.title}|${album.artist || ''}`,
+      await resolveAlbumCover(album),
+    ])).then((entries) => {
+      if (active) {
+        setResolvedCovers((current) => ({ ...current, ...Object.fromEntries(entries) }));
+      }
+    }).catch((error) => {
+      console.error('[Spotify] No s’han pogut carregar les portades de la llista:', error);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [foundPlaylist?.id, coverRequestKey]);
 
   useEffect(() => {
     if (isShared && recordedViewId.current !== playlist.id) {
@@ -159,52 +254,36 @@ export default function PlaylistDetailPage({ playlistId, onNavigate }) {
         )}
       </section>
 
-      {isShared && (
+      {isShared && !cloudAuthReady && (
+        <p className="text-center text-xs text-slate-400" role="status">Comprovant la sessió...</p>
+      )}
+
+      {isShared && cloudUser && (
         <section className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-[#131c2e] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-bold text-white">Valora aquesta llista</h2>
-            <p className="mt-1 text-xs text-slate-400">
-              {!cloudAuthReady
-                ? 'Comprovant la sessió...'
-                : cloudUser
-                ? 'La teva valoració es compartirà amb la comunitat.'
-                : currentUser && cloudAuthError
-                ? cloudAuthError
-                : 'Inicia sessió amb Google per poder valorar-la.'}
-            </p>
+            <p className="mt-1 text-xs text-slate-400">La teva valoració es compartirà amb la comunitat.</p>
             {playlist.user_rating && (
               <p className="mt-1 text-xs text-emerald-300">La teva valoració: {playlist.user_rating}/5</p>
             )}
           </div>
-          {!cloudAuthReady ? (
-            <p className="text-xs text-slate-400" role="status">Comprovant la sessió...</p>
-          ) : cloudUser ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <RatingStars
-                value={selectedRating}
-                onChange={setSelectedRating}
-                interactive
-                size="sm"
-                showNumber
-              />
-              <button
-                type="button"
-                disabled={selectedRating < 0.1}
-                onClick={() => ratePlaylist(playlist.id, selectedRating)}
-                className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Desar valoració
-              </button>
-            </div>
-          ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <RatingStars
+              value={selectedRating}
+              onChange={setSelectedRating}
+              interactive
+              size="sm"
+              showNumber
+            />
             <button
               type="button"
-              onClick={() => onNavigate('login')}
-              className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 transition-colors hover:bg-emerald-400"
+              disabled={selectedRating < 0.1}
+              onClick={() => ratePlaylist(playlist.id, selectedRating)}
+              className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {currentUser ? 'Torna a validar Google' : 'Iniciar sessió'}
+              Desar valoració
             </button>
-          )}
+          </div>
         </section>
       )}
 
